@@ -1,0 +1,22 @@
+[project]
+name = "fmc-meta"
+version = "0.0.1"
+authors = [
+  { name="Rodney Kinney", email="rodney.m.kinney@gmail.com" },
+]
+description = "A human-fmc-attempt simulator"
+readme = "README.md"
+requires-python = ">=3.9"
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "Operating System :: OS Independent",
+]
+
+[license]
+file = ["LICENSE"]
+      
+[project.urls]
+Homepage = "https://github.com/rodneykinney/fmc-meta"
+
+[project.scripts]
+fmc-meta = "fmc_meta.main:run"
