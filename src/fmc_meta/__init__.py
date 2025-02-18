@@ -57,7 +57,25 @@ class Step:
 
     @property
     def move_count(self):
-        return len(self.moves) + len(self.moves_on_inverse)
+        count = len(self.moves) + len(self.moves_on_inverse)
+        # Check for cancellations (but not against scramble)
+        if self.previous and self.previous.cumulative_move_count:
+
+            def cancellation(a: str, b: str):
+                if a[0] == b[0]:
+                    if inverse.get(a, a) == b:
+                        return 2
+                    else:
+                        return 1
+                return 0
+
+            if self.moves and self.previous.moves:
+                count -= cancellation(self.previous.moves[-1], self.moves[0])
+            if self.moves_on_inverse and self.previous.moves_on_inverse:
+                count -= cancellation(
+                    self.previous.moves_on_inverse[-1], self.moves_on_inverse[0]
+                )
+        return count
 
     @property
     def includes_niss(self) -> bool:
