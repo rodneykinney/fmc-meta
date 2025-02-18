@@ -1,6 +1,12 @@
 [project]
 name = "fmc-meta"
 version = "0.0.1"
+
+dependencies = [
+  "black",
+  "mypy"
+]
+
 authors = [
   { name="Rodney Kinney", email="rodney.m.kinney@gmail.com" },
 ]

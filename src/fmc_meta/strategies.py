@@ -15,12 +15,12 @@ class GeneralEO(EOStrategy):
     def __init__(
         self,
         max_eo_length: int = 5,
-        max_attempts: int = 30,
+        retain: int = 30,
         check_inverse: bool = True,
         max_niss_split: int = 1,
     ):
         self.max_eo_length = max_eo_length
-        self.max_eo_attempts = max_attempts
+        self.retain = retain
         self.check_inverse = check_inverse
         self.max_niss_split = max_niss_split
         self.rand = random.Random()
@@ -35,7 +35,7 @@ class GeneralEO(EOStrategy):
                 s += "Don't NISS in the middle\n"
             else:
                 s += f"Maximum NISS split: {self.max_niss_split}\n"
-        s += f"Keep the {self.max_eo_attempts} shortest EOs\n"
+        s += f"Keep the {self.retain} shortest EOs\n"
         s += "Prefer non-NISS\n"
         return s
 
@@ -72,7 +72,7 @@ class GeneralEO(EOStrategy):
 
     def select_eos(self, eos: List[Step]) -> List[Step]:
         eos.sort(key=self.sort_order)
-        eos = eos[: self.max_eo_attempts]
+        eos = eos[: self.retain]
         return eos
 
 
@@ -80,12 +80,12 @@ class OptimalDR(DRStrategy):
     def __init__(
         self,
         max_dr_length: int = 12,
-        max_attempts: int = 10,
+        retain: int = 10,
         check_inverse=True,
         max_niss_split=0,
     ):
         self.max_dr_length = max_dr_length
-        self.max_dr_attempts = max_attempts
+        self.retain = retain
         self.check_inverse = check_inverse
         self.max_niss_split = max_niss_split
         self.eo_to_dr_stages = {
@@ -106,7 +106,7 @@ class OptimalDR(DRStrategy):
             s += "Don't NISS in the middle\n"
         else:
             s += f"Maximum NISS split: {self.max_niss_split}"
-        s += f"Keep the {self.max_dr_attempts} shortest DRs\n"
+        s += f"Keep the {self.retain} shortest DRs\n"
         s += "Prefer non-NISS"
         return s
 
@@ -148,17 +148,15 @@ class OptimalDR(DRStrategy):
 
     def select_drs(self, drs: List[Step]) -> List[Step]:
         drs.sort(key=self.sort_order)
-        drs = drs[: self.max_dr_attempts]
+        drs = drs[: self.retain]
         return drs
 
 
 class SingleAxisDR(OptimalDR):
-    def __init__(
-        self, max_dr_length: int = 12, max_attempts: int = 10, check_inverse=True
-    ):
+    def __init__(self, max_dr_length: int = 12, retain: int = 10, check_inverse=True):
         super().__init__(
             max_dr_length=max_dr_length,
-            max_attempts=max_attempts,
+            retain=retain,
             check_inverse=check_inverse,
             max_niss_split=0,
         )
@@ -172,7 +170,7 @@ class SingleAxisDR(OptimalDR):
         if self.check_inverse:
             s += "Check normal and inverse\n"
             s += "Don't NISS in the middle\n"
-        s += f"Keep the {self.max_dr_attempts} shortest DRs\n"
+        s += f"Keep the {self.retain} shortest DRs\n"
         s += "Prefer non-NISS"
         return s
 
@@ -190,7 +188,7 @@ class SingleAxisDR(OptimalDR):
             )
             return len(qts) == 1
 
-        drs = list(filter(is_findable, drs))[: self.max_dr_attempts]
+        drs = list(filter(is_findable, drs))[: self.retain]
         return drs
 
 
@@ -240,8 +238,8 @@ available_metas = {
         finish_strategy=OptimalDRFinish(),
     ),
     "debug": Meta(
-        eo_strategy=GeneralEO(max_eo_length=1, max_attempts=10),
-        dr_strategy=OptimalDR(max_dr_length=2, max_attempts=10),
+        eo_strategy=GeneralEO(max_eo_length=1, retain=10),
+        dr_strategy=OptimalDR(max_dr_length=2, retain=10),
         finish_strategy=OptimalDRFinish(),
     ),
     "easy-corners": Meta(
