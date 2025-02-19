@@ -1,6 +1,7 @@
 import dataclasses
 from typing import List, Tuple, Optional
 import random
+import hashlib
 
 from pydantic import BaseModel, Field
 
@@ -23,11 +24,15 @@ class GeneralEO(EOStrategy, BaseModel):
     max_niss_split: int = Field(
         default=1, description="Maximum number of moves before NISS"
     )
-    seed: Optional[int] = Field(default=None, description="Random seed")
+    seed: Optional[int] = Field(None, description="Random seed")
 
     @property
-    def rand(self):
-        return random.Random(self.seed) if self.seed else random.Random()
+    def salt(self):
+        return (
+            hex(random.Random(self.seed).randint(0, 0xFFFFFFFFFFFFFFFF))
+            if self.seed
+            else ""
+        )
 
     def find_eos_on_axis(self, axis_step: str, scramble: Step) -> List[Step]:
         all_eos = []
@@ -59,16 +64,23 @@ class GeneralEO(EOStrategy, BaseModel):
             step.cumulative_move_count,
             step.includes_niss,
             step.requires_niss,
-            self.rand.uniform(0, 1),
+            hashlib.sha1((str(step) + self.salt).encode("UTF8")).hexdigest(),
         )
 
     def select_eos(self, eos: List[Step]) -> List[Step]:
-        eos.sort(key=self.sort_order)
+        eos = sorted(eos, key=self.sort_order)
         eos = eos[: self.retain]
         return eos
 
 
-class DRBaseStrategy(DRStrategy):
+class DRHelper(BaseModel):
+    check_inverse: bool = Field(
+        default=True, description="Check both normal and inverse"
+    )
+    max_niss_split: int = Field(
+        default=0, description="Maximum number of moves before NISS"
+    )
+    seed: Optional[int] = Field(default=None, description="Random seed")
 
     @property
     def eo_to_dr_stages(self):
@@ -79,36 +91,25 @@ class DRBaseStrategy(DRStrategy):
         }
 
     @property
-    def rand(self):
-        return random.Random(self.seed) if self.seed else random.Random()
+    def salt(self):
+        return (
+            hex(random.Random(self.seed).randint(0, 0xFFFFFFFFFFFFFFFF))
+            if self.seed
+            else ""
+        )
 
     def sort_order(self, step: Step) -> Tuple:
         return (
             step.cumulative_move_count,
             step.includes_niss,
             step.requires_niss,
-            self.rand.uniform(0, 1),
+            hashlib.sha1((str(step) + self.salt).encode("UTF8")).hexdigest(),
         )
 
-    def select_drs(self, drs: List[Step]) -> List[Step]:
-        drs.sort(key=self.sort_order)
-        drs = drs[: self.retain]  # type: ignore[attr-defined]
-        return drs
+    def order_drs(self, drs: List[Step]) -> List[Step]:
+        return sorted(drs, key=self.sort_order)
 
-
-class OptimalDR(DRBaseStrategy, BaseModel):
-    max_dr_length: int = Field(default=12, description="Maximum move count")
-    retain: int = Field(default=10, description="Attempt to finish this many DRs")
-    check_inverse: bool = Field(
-        default=True, description="Check both normal and inverse"
-    )
-    max_niss_split: int = Field(
-        default=0, description="Maximum number of moves before NISS"
-    )
-    seed: Optional[int] = Field(default=None, description="Random seed")
-
-    def find_drs_for_eo(self, eo: Step) -> List[Step]:
-        budget = self.max_dr_length - eo.cumulative_move_count
+    def find_drs_for_eo(self, eo: Step, budget: int) -> List[Step]:
         all_drs = []
         for next_step in self.eo_to_dr_stages[eo.name]:
             args = ["-M", budget + 1]  # Allow one extra in case of cancellation
@@ -139,54 +140,109 @@ class OptimalDR(DRBaseStrategy, BaseModel):
         return all_drs
 
 
-class SingleAxisDR(DRBaseStrategy, BaseModel):
+class OptimalDR(DRStrategy, BaseModel):
     max_dr_length: int = Field(default=12, description="Maximum move count")
+    include_eo_move_count: bool = Field(
+        default=True, description="Include EO when checking maximum move count"
+    )
     retain: int = Field(default=10, description="Attempt to finish this many DRs")
     check_inverse: bool = Field(
         default=True, description="Check both normal and inverse"
     )
     seed: Optional[int] = Field(default=None, description="Random seed")
 
+    @property
+    def helper(self):
+        return DRHelper(
+            check_inverse=self.check_inverse,
+            max_niss_split=0,
+            seed=self.seed,
+        )
+
     def find_drs_for_eo(self, eo: Step) -> List[Step]:
-        return OptimalDR(
-            max_dr_length=self.max_dr_length, check_inverse=self.check_inverse
-        ).find_drs_for_eo(eo)
+        budget = self.max_dr_length - (
+            eo.move_count if self.include_eo_move_count else 0
+        )
+        return self.helper.find_drs_for_eo(eo, budget)
 
     def select_drs(self, drs: List[Step]) -> List[Step]:
-        drs.sort(key=self.sort_order)
+        return self.helper.order_drs(drs)[: self.retain]
 
-        def is_findable(step: Step) -> bool:
-            moves = step.moves if step.moves else step.moves_on_inverse
-            # Count distinct axes having a quarter turn, up until the final quarter turn
-            moves = moves[:-1]
-            qts = set(
-                m.replace("'", "").replace("L", "R").replace("D", "U").replace("B", "F")
-                for m in moves
-                if "2" not in m
-            )
-            return len(qts) == 1
 
-        drs = list(filter(is_findable, drs))[: self.retain]
+class SingleAxisDR(DRStrategy, BaseModel):
+    max_dr_length: int = Field(
+        default=12, description="Maximum move count, including EO"
+    )
+    retain: int = Field(default=10, description="Attempt to finish this many DRs")
+    check_inverse: bool = Field(
+        default=True, description="Check both normal and inverse"
+    )
+    seed: Optional[int] = Field(default=None, description="Random seed")
+
+    @property
+    def helper(self):
+        return DRHelper(
+            check_inverse=self.check_inverse,
+            max_niss_split=0,
+            seed=self.seed,
+        )
+
+    def is_findable(self, step: Step) -> bool:
+        moves = step.moves if step.moves else step.moves_on_inverse
+        # Count distinct axes having a quarter turn, up until the final quarter turn
+        moves = moves[:-1]
+        qts = set(
+            m.replace("'", "").replace("L", "R").replace("D", "U").replace("B", "F")
+            for m in moves
+            if "2" not in m
+        )
+        return len(qts) == 1
+
+    def find_drs_for_eo(self, eo: Step) -> List[Step]:
+        budget = self.max_dr_length - eo.move_count
+        drs = self.helper.find_drs_for_eo(eo, budget)
+        drs = list(filter(self.is_findable, drs))
         return drs
+
+    def select_drs(self, drs: List[Step]) -> List[Step]:
+        return self.helper.order_drs(drs)[: self.retain]
 
 
 class OptimalFinish(FinishStrategy, BaseModel):
+
     def dr_to_finish(self, dr: Step) -> List[Step]:
         finish_step = f"{dr.name.split('-')[0]}fin"
-        return nissy(finish_step, dr)[:1]
+        shortest = nissy(finish_step, dr)[0]
+        if shortest.move_count < len(shortest.moves):
+            # Already have a cancellation
+            return [shortest]
+        else:
+            # Search for equal/longer finishes that may have cancellations
+            finishes = nissy(finish_step, dr, "-M", len(shortest.moves) + 1)
+            finishes.sort(key=lambda f: f.cumulative_move_count)
+            return finishes[:1]
 
 
 class EasyCornerOnlyFinish(FinishStrategy, BaseModel):
     max_qt_count: int = Field(
         default=3, description="Don't attempt DR cases with more than this many QTs"
     )
-    max_length: int = Field(default=15, description="Maximum move count")
 
     def dr_to_finish(self, dr: Step) -> List[Step]:
         finish_step = f"{dr.name.split('-')[0]}fin"
-        finishes = nissy(finish_step, dr, "-M", self.max_length)
+        shortest = nissy(finish_step, dr)[0]
+        if shortest.qt_count <= self.max_qt_count:
+            if shortest.move_count < len(shortest.moves):
+                # Already have a cancellation
+                return [shortest]
+            else:
+                # Search for equal/longer finishes that may have cancellations
+                finishes = nissy(finish_step, dr, "-M", len(shortest.moves) + 1)
+                finishes.sort(key=lambda f: f.cumulative_move_count)
+                return [f for f in finishes if f.qt_count <= self.max_qt_count][:1]
+        else:
+            # Too many QTs. Search for solutions up to two moves longer
+            finishes = nissy(finish_step, dr, "-M", len(shortest.moves) + 2)
+            finishes.sort(key=lambda f: f.cumulative_move_count)
 
-        def qt_count(step: Step) -> int:
-            return sum(1 for m in step.moves if not "2" in m)
-
-        return [f for f in finishes if qt_count(f) <= self.max_qt_count][:1]
+            return [f for f in finishes if f.qt_count <= self.max_qt_count][:1]

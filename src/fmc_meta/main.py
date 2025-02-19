@@ -24,18 +24,6 @@ class SolutionSet:
     drs: List[Step]
     finishes: List[Step]
 
-    def solution_summary(self, sol: Step) -> str:
-        s = ""
-        for step in sol.from_beginning():
-            s += f"{step} // {step.name} ({step.cumulative_move_count})\n"
-        return s
-
-    def summary(self, solution_count: int = 3) -> str:
-        s = ""
-        for sol in self.finishes[:solution_count]:
-            s += f"{self.solution_summary(sol)}\n"
-        return s
-
 
 def attempt(
     meta: Meta,
@@ -120,8 +108,10 @@ def solve(ctx, meta, scramble):
         meta=the_meta,
         scramble_moves=scramble.split(" "),
     )
-    print("")
-    print(solution_set.summary(4))
+    for sol in solution_set.finishes[:3]:
+        print("")
+        for step in sol.from_beginning():
+            print(f"{step} // {step.name} ({step.cumulative_move_count})")
 
 
 def load_meta(config: ConfigTree, overrides: Optional[Dict] = None) -> Meta:
