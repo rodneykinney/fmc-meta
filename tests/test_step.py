@@ -2,17 +2,20 @@ from fmc_meta import Step
 
 from unittest import TestCase
 
+
 class TestStep(TestCase):
     def test_move_count(self):
         s = Step(
             name="1",
-            moves="U' D F' R' U F2 U2 F2 U B' D2 R U2 R U2 L' D2 R2 B2 L' U2 D2".split(" ")
+            moves="U' D F' R' U F2 U2 F2 U B' D2 R U2 R U2 L' D2 R2 B2 L' U2 D2".split(
+                " "
+            ),
         )
         s2 = Step(
             name="2",
             previous=s,
             moves="R F".split(" "),
-            moves_on_inverse="D2".split(" ")
+            moves_on_inverse="D2".split(" "),
         )
         assert s2.cumulative_move_count == 3
         assert s2.move_count == 3

@@ -3,9 +3,12 @@ name = "fmc-meta"
 version = "0.0.1"
 
 dependencies = [
-  "black",
-  "mypy",
-  "pytest",
+  "black~=25.1",
+  "mypy~=1.15",
+  "pytest~=8.3",
+  "pyhocon~=0.3",
+  "click~=8.1",
+  "pydantic~=2.10",
 ]
 
 authors = [
