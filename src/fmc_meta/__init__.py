@@ -90,6 +90,10 @@ class Step:
         return count
 
     @property
+    def qt_count(self) -> int:
+        return sum(1 for m in self.moves if not "2" in m)
+
+    @property
     def includes_niss(self) -> bool:
         return len(self.moves) > 0 and len(self.moves_on_inverse) > 0
 
@@ -190,6 +194,7 @@ class FinishStrategy(ABC):
             for s in finishes
         ]
         finishes.sort(key=lambda s: s.cumulative_move_count)
+        s = self.dr_to_finish(drs[0])
         return finishes
 
     @abstractmethod
