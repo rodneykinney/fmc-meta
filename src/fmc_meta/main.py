@@ -88,7 +88,7 @@ def run():
         scramble_moves=scramble.split(" "),
     )
     print("")
-    print(solution_set.summary())
+    print(solution_set.summary(4))
 
 
 if __name__ == "__main__":

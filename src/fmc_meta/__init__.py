@@ -58,23 +58,34 @@ class Step:
     @property
     def move_count(self):
         count = len(self.moves) + len(self.moves_on_inverse)
+
         # Check for cancellations (but not against scramble)
-        if self.previous and self.previous.cumulative_move_count:
+        def cancellation(a: str, b: str):
+            if a[0] == b[0]:
+                if inverse.get(a, a) == b:
+                    return 2
+                else:
+                    return 1
+            return 0
 
-            def cancellation(a: str, b: str):
-                if a[0] == b[0]:
-                    if inverse.get(a, a) == b:
-                        return 2
-                    else:
-                        return 1
-                return 0
+        latest = self.previous
+        last_move_on_normal = ""
+        last_move_on_inverse = ""
+        while latest.cumulative_move_count:  # not the scramble
+            if latest.moves and not last_move_on_normal:
+                last_move_on_normal = latest.moves[-1]
+            if latest.moves_on_inverse and not last_move_on_inverse:
+                last_move_on_inverse = latest.moves_on_inverse[-1]
+            if last_move_on_inverse and last_move_on_normal:
+                break
+            latest = latest.previous
+        if last_move_on_normal and self.moves:
+            count -= cancellation(self.moves[0], last_move_on_normal)
+        if last_move_on_inverse and self.moves_on_inverse:
+            count -= cancellation(self.moves_on_inverse[0], last_move_on_inverse)
+        if last_move_on_inverse and self.moves:
+            count -= cancellation(self.moves[-1], last_move_on_inverse)
 
-            if self.moves and self.previous.moves:
-                count -= cancellation(self.previous.moves[-1], self.moves[0])
-            if self.moves_on_inverse and self.previous.moves_on_inverse:
-                count -= cancellation(
-                    self.previous.moves_on_inverse[-1], self.moves_on_inverse[0]
-                )
         return count
 
     @property
@@ -137,7 +148,7 @@ class EOStrategy(ABC):
     def find_eos(self, scramble: Step) -> List[Step]:
         eos = [
             s
-            for scramble_to_eos in _pool.map(  # type: ignore
+            for scramble_to_eos in _pool.map(  # type: ignore[attr-defined]
                 functools.partial(self.find_eos_on_axis, scramble=scramble),
                 ["eofb", "eorl", "eoud"],
             )
@@ -164,7 +175,7 @@ class DRStrategy(ABC):
 
     def find_drs(self, eos: List[Step]) -> List[Step]:
         drs = [
-            s for eo_to_drs in _pool.map(self.find_drs_for_eo, eos) for s in eo_to_drs  # type: ignore
+            s for eo_to_drs in _pool.map(self.find_drs_for_eo, eos) for s in eo_to_drs  # type: ignore[attr-defined]
         ]
         print(f"Found DRs: {MoveCountHistogram(drs)}")
         return self.select_drs(drs)
@@ -186,7 +197,11 @@ class FinishStrategy(ABC):
 
     def drs_to_finishes(self, drs: List[Step]) -> List[Step]:
         finishes = [
-            s for finishes in _pool.map(self.dr_to_finish, drs) for s in finishes  # type: ignore
+            s
+            for finishes in _pool.map(  # type: ignore[attr-defined]
+                self.dr_to_finish, drs
+            )
+            for s in finishes
         ]
         finishes.sort(key=lambda s: s.cumulative_move_count)
         return finishes
@@ -216,7 +231,7 @@ NISSY_PATH = subprocess.check_output(["which", "nissy"], encoding="UTF8").strip(
 
 def nissy(step_name: str, scramble: Step, *args) -> List[Step]:
     cmd = (
-        [NISSY_PATH, "solve", step_name]
+        [NISSY_PATH, "solve", step_name, "-p"]
         + list(str(a) for a in args)
         + [" ".join(scramble.all_moves)]
     )
@@ -229,7 +244,6 @@ def nissy(step_name: str, scramble: Step, *args) -> List[Step]:
     for line in p.stdout.strip().split("\n"):
         if not line:
             continue  # No solution
-        line = " ".join(line.strip().split((" "))[:-1])  # Strip off the move-count
         n_i_moves: Tuple = ([], [])  # (normal,inverse)
         toggle = 0
         for move in re.split("[() ]", line):
