@@ -53,8 +53,6 @@ Config options for easy-corners:
 
   --finish.max_qt_count=3
     Don't attempt DR cases with more than this many QTs
-  --finish.max_length=15
-    Maximum move count
 
 $ fmc-meta solve --meta easy-corners "R U' F2 R2 D' R F' B' R F B2 D R2 U' F2 U B2 D L2 B2 D L2 F2"
 Using meta=easy-corners
@@ -77,8 +75,7 @@ U' F' L (R) // eorl (4)
 (R2 U2 B' D2 B L2 F' D) // drfb-eorl (11)
 R2 L2 B' R2 U2 F R2 F2 D2 U2 L2 D2 B // drfbfin (24)
 
-$ 
-fmc-meta solve --meta single-axis-dr "R U' F2 R2 D' R F' B' R F B2 D R2 U' F2 U B2 D L2 B2 D L2 F2"
+$ fmc-meta solve --meta single-axis-dr "R U' F2 R2 D' R F' B' R F B2 D R2 U' F2 U B2 D L2 B2 D L2 F2"
 Using meta=single-axis-dr
 Scramble: R U' F2 R2 D' R F' B' R F B2 D R2 U' F2 U B2 D L2 B2 D L2 F2
 Looking for EOs
