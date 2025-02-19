@@ -1,5 +1,8 @@
-from typing import List, Tuple
+import dataclasses
+from typing import List, Tuple, Optional
 import random
+
+from pydantic import BaseModel, Field
 
 from fmc_meta import (
     Step,
@@ -11,33 +14,20 @@ from fmc_meta import (
 )
 
 
-class GeneralEO(EOStrategy):
-    def __init__(
-        self,
-        max_eo_length: int = 5,
-        retain: int = 30,
-        check_inverse: bool = True,
-        max_niss_split: int = 1,
-    ):
-        self.max_eo_length = max_eo_length
-        self.retain = retain
-        self.check_inverse = check_inverse
-        self.max_niss_split = max_niss_split
-        self.rand = random.Random()
+class GeneralEO(EOStrategy, BaseModel):
+    max_eo_length: int = Field(default=5, description="Maximum move count")
+    retain: int = Field(default=30, description="Attempt to find DR on this many EOs")
+    check_inverse: bool = Field(
+        default=True, description="Check both normal and inverse"
+    )
+    max_niss_split: int = Field(
+        default=1, description="Maximum number of moves before NISS"
+    )
+    seed: Optional[int] = Field(default=None, description="Random seed")
 
     @property
-    def description(self) -> str:
-        s = ""
-        s += f"Find all EOs up to {self.max_eo_length} moves\n"
-        if self.check_inverse:
-            s += "Check normal and inverse\n"
-            if self.max_niss_split == 0:
-                s += "Don't NISS in the middle\n"
-            else:
-                s += f"Maximum NISS split: {self.max_niss_split}\n"
-        s += f"Keep the {self.retain} shortest EOs\n"
-        s += "Prefer non-NISS\n"
-        return s
+    def rand(self):
+        return random.Random(self.seed) if self.seed else random.Random()
 
     def find_eos_on_axis(self, axis_step: str, scramble: Step) -> List[Step]:
         all_eos = []
@@ -78,39 +68,44 @@ class GeneralEO(EOStrategy):
         return eos
 
 
-class OptimalDR(DRStrategy):
-    def __init__(
-        self,
-        max_dr_length: int = 12,
-        retain: int = 10,
-        check_inverse=True,
-        max_niss_split=0,
-    ):
-        self.max_dr_length = max_dr_length
-        self.retain = retain
-        self.check_inverse = check_inverse
-        self.max_niss_split = max_niss_split
-        self.eo_to_dr_stages = {
+class DRBaseStrategy(DRStrategy):
+
+    @property
+    def eo_to_dr_stages(self):
+        return {
             "eofb": ["drud-eofb", "drrl-eofb"],
             "eorl": ["drud-eorl", "drfb-eorl"],
             "eoud": ["drfb-eoud", "drrl-eoud"],
         }
-        self.rand = random.Random()
 
     @property
-    def description(self) -> str:
-        s = ""
-        s += f"Find all DRs up to {self.max_dr_length} moves, including the preceding EO\n"
-        s += "Don't break EO.\n"
-        if self.check_inverse:
-            s += "Check normal and inverse\n"
-        if self.max_niss_split == 0:
-            s += "Don't NISS in the middle\n"
-        else:
-            s += f"Maximum NISS split: {self.max_niss_split}"
-        s += f"Keep the {self.retain} shortest DRs\n"
-        s += "Prefer non-NISS"
-        return s
+    def rand(self):
+        return random.Random(self.seed) if self.seed else random.Random()
+
+    def sort_order(self, step: Step) -> Tuple:
+        return (
+            step.cumulative_move_count,
+            step.includes_niss,
+            step.requires_niss,
+            self.rand.uniform(0, 1),
+        )
+
+    def select_drs(self, drs: List[Step]) -> List[Step]:
+        drs.sort(key=self.sort_order)
+        drs = drs[: self.retain]  # type: ignore[attr-defined]
+        return drs
+
+
+class OptimalDR(DRBaseStrategy, BaseModel):
+    max_dr_length: int = Field(default=12, description="Maximum move count")
+    retain: int = Field(default=10, description="Attempt to finish this many DRs")
+    check_inverse: bool = Field(
+        default=True, description="Check both normal and inverse"
+    )
+    max_niss_split: int = Field(
+        default=0, description="Maximum number of moves before NISS"
+    )
+    seed: Optional[int] = Field(default=None, description="Random seed")
 
     def find_drs_for_eo(self, eo: Step) -> List[Step]:
         budget = self.max_dr_length - eo.cumulative_move_count
@@ -143,41 +138,19 @@ class OptimalDR(DRStrategy):
 
         return all_drs
 
-    def sort_order(self, step: Step) -> Tuple:
-        return (
-            step.cumulative_move_count,
-            step.includes_niss,
-            step.requires_niss,
-            self.rand.uniform(0, 1),
-        )
 
-    def select_drs(self, drs: List[Step]) -> List[Step]:
-        drs.sort(key=self.sort_order)
-        drs = drs[: self.retain]
-        return drs
+class SingleAxisDR(DRBaseStrategy, BaseModel):
+    max_dr_length: int = Field(default=12, description="Maximum move count")
+    retain: int = Field(default=10, description="Attempt to finish this many DRs")
+    check_inverse: bool = Field(
+        default=True, description="Check both normal and inverse"
+    )
+    seed: Optional[int] = Field(default=None, description="Random seed")
 
-
-class SingleAxisDR(OptimalDR):
-    def __init__(self, max_dr_length: int = 12, retain: int = 10, check_inverse=True):
-        super().__init__(
-            max_dr_length=max_dr_length,
-            retain=retain,
-            check_inverse=check_inverse,
-            max_niss_split=0,
-        )
-
-    @property
-    def description(self) -> str:
-        s = ""
-        s += f"Find all DRs up to {self.max_dr_length} moves, including the preceding EO\n"
-        s += "Only consider DRs that use DR moves from a single axis\n"
-        s += "Don't break EO.\n"
-        if self.check_inverse:
-            s += "Check normal and inverse\n"
-            s += "Don't NISS in the middle\n"
-        s += f"Keep the {self.retain} shortest DRs\n"
-        s += "Prefer non-NISS"
-        return s
+    def find_drs_for_eo(self, eo: Step) -> List[Step]:
+        return OptimalDR(
+            max_dr_length=self.max_dr_length, check_inverse=self.check_inverse
+        ).find_drs_for_eo(eo)
 
     def select_drs(self, drs: List[Step]) -> List[Step]:
         drs.sort(key=self.sort_order)
@@ -197,29 +170,17 @@ class SingleAxisDR(OptimalDR):
         return drs
 
 
-class OptimalDRFinish(FinishStrategy):
-    @property
-    def description(self) -> str:
-        s = ""
-        s += f"Find the optimal DR solution that doesn't break DR"
-        return s
-
+class OptimalFinish(FinishStrategy, BaseModel):
     def dr_to_finish(self, dr: Step) -> List[Step]:
         finish_step = f"{dr.name.split('-')[0]}fin"
         return nissy(finish_step, dr)[:1]
 
 
-class EasyCornerDRFinish(FinishStrategy):
-    def __init__(self, max_qt_count: int = 3, max_length: int = 14):
-        self.max_qt_count = max_qt_count
-        self.max_length = max_length
-
-    @property
-    def description(self) -> str:
-        s = ""
-        s += f"Find the optimal DR solution that doesn't break DR\n"
-        s += "Give up unless DR is 3QT or less"
-        return s
+class EasyCornerOnlyFinish(FinishStrategy, BaseModel):
+    max_qt_count: int = Field(
+        default=3, description="Don't attempt DR cases with more than this many QTs"
+    )
+    max_length: int = Field(default=15, description="Maximum move count")
 
     def dr_to_finish(self, dr: Step) -> List[Step]:
         finish_step = f"{dr.name.split('-')[0]}fin"
@@ -229,27 +190,3 @@ class EasyCornerDRFinish(FinishStrategy):
             return sum(1 for m in step.moves if not "2" in m)
 
         return [f for f in finishes if qt_count(f) <= self.max_qt_count][:1]
-
-
-available_metas = {
-    "near-optimal": Meta(
-        eo_strategy=GeneralEO(),
-        dr_strategy=OptimalDR(),
-        finish_strategy=OptimalDRFinish(),
-    ),
-    "single-axis-dr": Meta(
-        eo_strategy=GeneralEO(),
-        dr_strategy=SingleAxisDR(),
-        finish_strategy=OptimalDRFinish(),
-    ),
-    "debug": Meta(
-        eo_strategy=GeneralEO(max_eo_length=1, retain=10),
-        dr_strategy=OptimalDR(max_dr_length=2, retain=10),
-        finish_strategy=OptimalDRFinish(),
-    ),
-    "easy-corners": Meta(
-        eo_strategy=GeneralEO(),
-        dr_strategy=OptimalDR(),
-        finish_strategy=EasyCornerDRFinish(),
-    ),
-}

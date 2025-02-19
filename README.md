@@ -19,34 +19,42 @@ A sample session is shown below:
 ```
 $ fmc-meta --list
 Available metas:
-  near-optimal
-  single-axis-dr
-  debug
-  easy-corners
 
-$ fmc-meta --show --meta easy-corners
-Behavior of --meta easy-corners:
+near-optimal:
+  EOs: include NISS. DRs: optimal. Finishes: optimal
+single-axis-dr:
+  EOs: include NISS. DRs: only pure rzp or jzp. Finishes: optimal
+debug:
+  For debugging
+easy-corners:
+  EOs: include NISS. DRs: only pure rzp or jzp. Finishes: easy corners only
 
-EO:
-Find all EOs up to 5 moves
-Check normal and inverse
-Maximum NISS split: 1
-Keep the 30 shortest EOs
-Prefer non-NISS
+$ fmc-meta show-options easy-corners
+Config options for easy-corners:
+  --eo.max_eo_length=5
+    Maximum move count
+  --eo.retain=30
+    Attempt to find DR on this many EOs
+  --eo.check_inverse=True
+    Check both normal and inverse
+  --eo.max_niss_split=1
+    Maximum number of moves before NISS
+  --eo.seed=None
+    Random seed
 
+  --dr.max_dr_length=12
+    Maximum move count
+  --dr.retain=10
+    Attempt to finish this many DRs
+  --dr.check_inverse=True
+    Check both normal and inverse
+  --dr.seed=None
+    Random seed
 
-DR:
-Find all DRs up to 12 moves, including the preceding EO
-Don't break EO.
-Check normal and inverse
-Don't NISS in the middle
-Keep the 10 shortest DRs
-Prefer non-NISS
-
-Finish:
-Find the optimal DR solution that doesn't break DR
-Give up unless DR is 3QT or less
-
+  --finish.max_qt_count=3
+    Don't attempt DR cases with more than this many QTs
+  --finish.max_length=15
+    Maximum move count
 
 $ fmc-meta --meta easy-corners "R U' F2 R2 D' R F' B' R F B2 D R2 U' F2 U B2 D L2 B2 D L2 F2"
 Using meta=easy-corners

@@ -5,6 +5,7 @@ import multiprocessing
 import functools
 import subprocess
 import re
+from os import path
 
 _pool: multiprocessing.Pool = None  # type: ignore
 
@@ -140,11 +141,6 @@ class MoveCountHistogram:
 
 
 class EOStrategy(ABC):
-    @property
-    @abstractmethod
-    def description(self) -> str:
-        pass
-
     def find_eos(self, scramble: Step) -> List[Step]:
         eos = [
             s
@@ -168,11 +164,6 @@ class EOStrategy(ABC):
 
 
 class DRStrategy(ABC):
-    @property
-    @abstractmethod
-    def description(self) -> str:
-        pass
-
     def find_drs(self, eos: List[Step]) -> List[Step]:
         drs = [
             s for eo_to_drs in _pool.map(self.find_drs_for_eo, eos) for s in eo_to_drs  # type: ignore[attr-defined]
@@ -190,11 +181,6 @@ class DRStrategy(ABC):
 
 
 class FinishStrategy(ABC):
-    @property
-    @abstractmethod
-    def description(self) -> str:
-        pass
-
     def drs_to_finishes(self, drs: List[Step]) -> List[Step]:
         finishes = [
             s
@@ -216,14 +202,6 @@ class Meta:
     eo_strategy: EOStrategy
     dr_strategy: DRStrategy
     finish_strategy: FinishStrategy
-
-    @property
-    def description(self):
-        s = ""
-        s += f"EO:\n{self.eo_strategy.description}\n\n"
-        s += f"DR:\n{self.dr_strategy.description}\n\n"
-        s += f"Finish:\n{self.finish_strategy.description}\n\n"
-        return s
 
 
 NISSY_PATH = subprocess.check_output(["which", "nissy"], encoding="UTF8").strip()

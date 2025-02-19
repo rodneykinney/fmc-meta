@@ -1,11 +1,20 @@
-from typing import List, Tuple
+from typing import List, Tuple, Optional, Dict
 import sys
 from dataclasses import dataclass
 import multiprocessing
 import argparse
+from os import path
+import re
+
+from pyhocon import ConfigFactory, ConfigTree  # type: ignore
+import click
 
 import fmc_meta
 from fmc_meta import Step, Meta, MoveCountHistogram, strategies
+
+config = ConfigFactory.parse_file(
+    path.join(path.dirname(strategies.__file__), "meta.conf")
+)
 
 
 @dataclass
@@ -53,42 +62,75 @@ def attempt(
     return solutions
 
 
+@click.group()
 def run():
-    parser = argparse.ArgumentParser(prog="fmc-meta")
-    parser.add_argument("-m", "--meta")
-    parser.add_argument(
-        "-l", "--list", action="store_true", help="List available metas"
-    )
-    parser.add_argument("-s", "--show", action="store_true", help="Describe named meta")
-    parser.add_argument("scramble", nargs="?")
-    args = parser.parse_args()
-    if args.list:
-        print("Available metas:")
-        for name, meta in strategies.available_metas.items():
-            print(f"  {name}")
-        sys.exit(0)
-    if args.meta not in strategies.available_metas:
-        print(f"Unknown meta: {args.meta}")
-        sys.exit(1)
-    meta = strategies.available_metas[args.meta]
-    if args.show:
-        print(f"Behavior of --meta {args.meta}:\n")
-        print(meta.description)
-        exit(0)
-    if not args.scramble:
-        print("Missing scramble")
-        parser.print_help()
+    pass
+
+
+@run.command()
+def list():
+    print("Available metas:\n")
+    for key, cfg in config["options"].items():
+        print(f"{key}:\n  {cfg['description']}")
+
+
+@run.command()
+@click.argument("meta")
+def show_options(meta):
+    if meta not in config["options"]:
+        print(f"No meta named '{meta}'")
         exit(1)
-    scramble = args.scramble
-    fmc_meta._pool = multiprocessing.Pool(processes=multiprocessing.cpu_count())
-    print(f"Using meta={args.meta}")
+    m = load_meta(config["options"][meta])
+    print(f"Config options for {meta}:")
+    for name, field in m.eo_strategy.model_fields.items():
+        print(f"  --eo.{name}={field.default}\n    {field.description or ''}")
+    print("")
+    for name, field in m.dr_strategy.model_fields.items():
+        print(f"  --dr.{name}={field.default}\n    {field.description or ''}")
+    print("")
+    for name, field in m.finish_strategy.model_fields.items():
+        print(f"  --finish.{name}={field.default}\n    {field.description or ''}")
+
+
+@run.command(
+    context_settings=dict(
+        ignore_unknown_options=True,
+        allow_extra_args=True,
+    )
+)
+@click.option("--meta", required=True, help="Meta strategy name")
+@click.argument("scramble")
+@click.pass_context
+def solve(ctx, meta, scramble):
+    if meta not in config["options"]:
+        print(f"No meta named '{meta}'")
+        exit(1)
+
+    overrides = {}
+    for arg in ctx.args:
+        match = re.match("--([^=]*)=(.*)", arg)
+        if match:
+            overrides[match.group(1)] = match.group(2)
+    the_meta = load_meta(config["options"][meta], overrides)
+
+    print(f"Using meta={meta}")
     print(f"Scramble: {scramble}")
+    fmc_meta._pool = multiprocessing.Pool(processes=multiprocessing.cpu_count())
     solution_set = attempt(
-        meta=meta,
+        meta=the_meta,
         scramble_moves=scramble.split(" "),
     )
     print("")
     print(solution_set.summary(4))
+
+
+def load_meta(config: ConfigTree, overrides: Optional[Dict] = None) -> Meta:
+    if overrides:
+        config = ConfigFactory.from_dict(overrides).with_fallback(config)
+    eo = getattr(strategies, config["eo"]["class"])(**config["eo"])
+    dr = getattr(strategies, config["dr"]["class"])(**config["dr"])
+    finish = getattr(strategies, config["finish"]["class"])(**config["finish"])
+    return Meta(eo_strategy=eo, dr_strategy=dr, finish_strategy=finish)
 
 
 if __name__ == "__main__":
