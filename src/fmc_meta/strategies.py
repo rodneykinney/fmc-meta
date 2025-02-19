@@ -51,15 +51,17 @@ class GeneralEO(EOStrategy):
                 for s in eos
                 if min(len(s.moves), len(s.moves_on_inverse)) <= self.max_niss_split
             ]
+            all_eos.extend(eos)
         elif self.check_inverse:
             all_eos.extend(eos)
+            found_eos = set(str(s) for s in all_eos)
             i_eos = nissy(axis_step, scramble.on_inverse(), *args)
             i_eos = [
-                Step(name=s.name, previous=s.previous, moves_on_inverse=s.moves)
+                Step(name=s.name, previous=scramble, moves_on_inverse=s.moves)
                 for s in i_eos
+                if not str(s.on_inverse()) in found_eos
             ]
             all_eos.extend(i_eos)
-        all_eos.extend(eos)
         return all_eos
 
     def sort_order(self, step: Step) -> Tuple:
@@ -114,12 +116,14 @@ class OptimalDR(DRStrategy):
         budget = self.max_dr_length - eo.cumulative_move_count
         all_drs = []
         for next_step in self.eo_to_dr_stages[eo.name]:
-            args = ["-M", budget]
+            args = ["-M", budget + 1]  # Allow one extra in case of cancellation
 
             if self.check_inverse and self.max_niss_split > 0:
                 args.append("-N")
             drs = nissy(next_step, eo, *args)
+            drs = [s for s in drs if s.move_count <= budget]
             if self.check_inverse and self.max_niss_split > 0:
+                drs = [s for s in drs if s.move_count <= budget]
                 drs = [
                     s
                     for s in drs
@@ -130,6 +134,7 @@ class OptimalDR(DRStrategy):
                 # This is faster than running nissy -N
                 all_drs.extend(drs)
                 i_drs = nissy(next_step, eo.on_inverse(), *args)
+                i_drs = [s for s in i_drs if s.move_count <= budget]
                 i_drs = [
                     Step(name=s.name, previous=eo, moves_on_inverse=s.moves)
                     for s in i_drs
