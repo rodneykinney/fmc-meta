@@ -1,11 +1,12 @@
+import dataclasses
 from typing import Optional, List, Tuple, Dict
 from abc import ABC, abstractmethod
-from dataclasses import dataclass, field
 import multiprocessing
 import functools
 import subprocess
 import re
-from os import path
+
+from pydantic import BaseModel, Field
 
 _pool: multiprocessing.Pool = None  # type: ignore
 
@@ -29,11 +30,10 @@ def invert(moves: List[str]) -> List[str]:
     return [inverse.get(m, m) for m in reversed(moves)]
 
 
-@dataclass
-class Step:
+class Step(BaseModel):
     name: str
-    moves: List[str] = field(default_factory=list)  # on normal
-    moves_on_inverse: List[str] = field(default_factory=list)
+    moves: List[str] = Field(default_factory=list)  # on normal
+    moves_on_inverse: List[str] = Field(default_factory=list)
     previous: Optional["Step"] = None
 
     @property
@@ -128,8 +128,7 @@ class Step:
             return inverse_moves
 
 
-@dataclass
-class MoveCountHistogram:
+class MoveCountHistogram(BaseModel):
     steps: List[Step]
 
     @property
@@ -145,6 +144,11 @@ class MoveCountHistogram:
 
 
 class EOStrategy(ABC):
+
+    @abstractmethod
+    def description(self) -> str:
+        pass
+
     def find_eos(self, scramble: Step) -> List[Step]:
         eos = [
             s
@@ -154,7 +158,7 @@ class EOStrategy(ABC):
             )
             for s in scramble_to_eos
         ]
-        print(f"Found EOs: {MoveCountHistogram(eos)}")
+        print(f"Found EOs: {MoveCountHistogram(steps=eos)}")
         eos = self.select_eos(eos)
         return eos
 
@@ -168,11 +172,15 @@ class EOStrategy(ABC):
 
 
 class DRStrategy(ABC):
+    @abstractmethod
+    def description(self):
+        pass
+
     def find_drs(self, eos: List[Step]) -> List[Step]:
         drs = [
             s for eo_to_drs in _pool.map(self.find_drs_for_eo, eos) for s in eo_to_drs  # type: ignore[attr-defined]
         ]
-        print(f"Found DRs: {MoveCountHistogram(drs)}")
+        print(f"Found DRs: {MoveCountHistogram(steps=drs)}")
         return self.select_drs(drs)
 
     @abstractmethod
@@ -185,6 +193,10 @@ class DRStrategy(ABC):
 
 
 class FinishStrategy(ABC):
+    @abstractmethod
+    def description(self):
+        pass
+
     def drs_to_finishes(self, drs: List[Step]) -> List[Step]:
         finishes = [
             s
@@ -202,11 +214,11 @@ class FinishStrategy(ABC):
         pass
 
 
-@dataclass
+@dataclasses.dataclass
 class Meta:
-    eo_strategy: EOStrategy
-    dr_strategy: DRStrategy
-    finish_strategy: FinishStrategy
+    eo: EOStrategy
+    dr: DRStrategy
+    finish: FinishStrategy
 
 
 NISSY_PATH = subprocess.check_output(["which", "nissy"], encoding="UTF8").strip()

@@ -1,23 +1,21 @@
 from typing import List, Tuple, Optional, Dict
-from dataclasses import dataclass
 import multiprocessing
 from os import path
 import re
 import subprocess
+import json
 
 from pyhocon import ConfigFactory, ConfigTree  # type: ignore
+from pydantic import BaseModel
 import click
 
 import fmc_meta
 from fmc_meta import Step, Meta, MoveCountHistogram, strategies
 
-config = ConfigFactory.parse_file(
-    path.join(path.dirname(strategies.__file__), "meta.conf")
-)
+config = ConfigFactory.parse_file(path.join(path.dirname(__file__), "meta.conf"))
 
 
-@dataclass
-class SolutionSet:
+class SolutionSet(BaseModel):
     scramble: Step
     eos: List[Step]
     drs: List[Step]
@@ -39,16 +37,16 @@ def attempt(
     )
 
     print("Looking for EOs")
-    solutions.eos = meta.eo_strategy.find_eos(solutions.scramble)
+    solutions.eos = meta.eo.find_eos(solutions.scramble)
 
     print(
-        f"Looking for DRs on {len(solutions.eos)} EOs: {MoveCountHistogram(solutions.eos)}"
+        f"Looking for DRs on {len(solutions.eos)} EOs: {MoveCountHistogram(steps=solutions.eos)}"
     )
-    solutions.drs = meta.dr_strategy.find_drs(solutions.eos)
+    solutions.drs = meta.dr.find_drs(solutions.eos)
     print(
-        f"Looking for finishes on {len(solutions.drs)} DRs: {MoveCountHistogram(solutions.drs)}"
+        f"Looking for finishes on {len(solutions.drs)} DRs: {MoveCountHistogram(steps=solutions.drs)}"
     )
-    solutions.finishes = meta.finish_strategy.drs_to_finishes(solutions.drs)
+    solutions.finishes = meta.finish.drs_to_finishes(solutions.drs)
     return solutions
 
 
@@ -60,26 +58,56 @@ def run():
 @run.command(help="List pre-configured metas")
 def list():
     print("Available metas:\n")
-    for key, cfg in config["options"].items():
-        print(f"{key}:\n  {cfg['description']}")
+    for name, _ in config["options"].items():
+        meta = load_meta(name)
+        print(f"{name}:")
+        print(f"  EO: {meta.eo.description()}")
+        print(f"  DR: {meta.dr.description()}")
+        print(f"  Finish: {meta.finish.description()}")
 
 
 @run.command(help="Show command-line options for pre-configured meta")
 @click.argument("meta")
 def show_options(meta):
-    if meta not in config["options"]:
-        print(f"No meta named '{meta}'")
-        exit(1)
-    m = load_meta(config["options"][meta])
+    m = load_meta(meta)
     print(f"Config options for {meta}:")
-    for name, field in m.eo_strategy.model_fields.items():
+    for name, field in m.eo.model_fields.items():
         print(f"  --eo.{name}={field.default}\n    {field.description or ''}")
     print("")
-    for name, field in m.dr_strategy.model_fields.items():
+    for name, field in m.dr.model_fields.items():
         print(f"  --dr.{name}={field.default}\n    {field.description or ''}")
     print("")
-    for name, field in m.finish_strategy.model_fields.items():
+    for name, field in m.finish.model_fields.items():
         print(f"  --finish.{name}={field.default}\n    {field.description or ''}")
+
+
+def parse_overrides(ctx):
+    overrides = {}
+    for arg in ctx.args:
+        match = re.match("--([^=]*)=(.*)", arg)
+        if match:
+            overrides[match.group(1)] = match.group(2)
+    return overrides
+
+
+@run.command(
+    context_settings=dict(
+        ignore_unknown_options=True,
+        allow_extra_args=True,
+    ),
+    help="Dump configuration for a meta",
+)
+@click.argument("meta")
+@click.pass_context
+def dump(ctx, meta):
+    the_meta = load_meta(meta, parse_overrides(ctx))
+    dump = {
+        "eo": the_meta.eo.model_dump() | {"class": the_meta.eo.__class__.__name__},
+        "dr": the_meta.dr.model_dump() | {"class": the_meta.dr.__class__.__name__},
+        "finish": the_meta.finish.model_dump()
+        | {"class": the_meta.finish.__class__.__name__},
+    }
+    print(json.dumps(dump, indent=2))
 
 
 @run.command(
@@ -90,19 +118,14 @@ def show_options(meta):
     help="Solve a scramble using the specified meta",
 )
 @click.option("--meta", required=True, help="Meta strategy name")
-@click.argument("scramble")
+@click.option("--top", type=int, default=3, help="Show this many solutions")
 @click.pass_context
-def solve(ctx, meta, scramble):
-    if meta not in config["options"]:
-        print(f"No meta named '{meta}'")
+def solve(ctx, meta, top):
+    the_meta = load_meta(meta, parse_overrides(ctx))
+    scramble = next((a for a in ctx.args if not a.startswith("--")), None)
+    if not scramble:
+        print("Missing scramble")
         exit(1)
-
-    overrides = {}
-    for arg in ctx.args:
-        match = re.match("--([^=]*)=(.*)", arg)
-        if match:
-            overrides[match.group(1)] = match.group(2)
-    the_meta = load_meta(config["options"][meta], overrides)
 
     print(f"Using meta={meta}")
     print(f"Scramble: {scramble}")
@@ -110,7 +133,7 @@ def solve(ctx, meta, scramble):
         meta=the_meta,
         scramble_moves=scramble.split(" "),
     )
-    for sol in solution_set.finishes[:3]:
+    for sol in solution_set.finishes[:top]:
         print("")
         for step in sol.from_beginning():
             print(f"{step} // {step.name} ({step.cumulative_move_count})")
@@ -130,8 +153,8 @@ def compare(n: int, report, meta1, meta2):
     if meta2 not in config["options"]:
         print(f"No meta named '{meta2}'")
         exit(1)
-    m1 = load_meta(config["options"][meta1])
-    m2 = load_meta(config["options"][meta2])
+    m1 = load_meta(meta1)
+    m2 = load_meta(meta2)
 
     with open(report, "w") as report:
         report.write(
@@ -170,13 +193,20 @@ def compare(n: int, report, meta1, meta2):
             report.flush()
 
 
-def load_meta(config: ConfigTree, overrides: Optional[Dict] = None) -> Meta:
+def load_meta(name: str, overrides: Optional[Dict] = None) -> "Meta":
+    if path.exists(name):
+        meta_cfg = ConfigFactory.parse_file(name)
+    elif name in config["options"]:
+        meta_cfg = config["options"][name]
+    else:
+        print(f"No meta named '{name}'")
+        exit(1)
     if overrides:
-        config = ConfigFactory.from_dict(overrides).with_fallback(config)
-    eo = getattr(strategies, config["eo"]["class"])(**config["eo"])
-    dr = getattr(strategies, config["dr"]["class"])(**config["dr"])
-    finish = getattr(strategies, config["finish"]["class"])(**config["finish"])
-    return Meta(eo_strategy=eo, dr_strategy=dr, finish_strategy=finish)
+        meta_cfg = ConfigFactory.from_dict(overrides).with_fallback(meta_cfg)
+    eo = getattr(strategies, meta_cfg["eo"]["class"])(**meta_cfg["eo"])
+    dr = getattr(strategies, meta_cfg["dr"]["class"])(**meta_cfg["dr"])
+    finish = getattr(strategies, meta_cfg["finish"]["class"])(**meta_cfg["finish"])
+    return Meta(eo=eo, dr=dr, finish=finish)
 
 
 if __name__ == "__main__":
