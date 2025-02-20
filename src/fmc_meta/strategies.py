@@ -171,7 +171,7 @@ class OptimalDR(DRStrategy, BaseModel):
 
 class SingleAxisDR(DRStrategy, BaseModel):
     max_dr_length: int = Field(
-        default=12, description="Maximum move count, including EO"
+        default=14, description="Maximum move count, including EO"
     )
     retain: int = Field(default=10, description="Attempt to finish this many DRs")
     check_inverse: bool = Field(
