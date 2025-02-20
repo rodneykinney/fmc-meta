@@ -26,6 +26,17 @@ class GeneralEO(EOStrategy, BaseModel):
     )
     seed: Optional[int] = Field(None, description="Random seed")
 
+    def description(self) -> str:
+        lines = [
+            f"All EOs up to {self.max_eo_length} moves",
+        ]
+        if not self.check_inverse:
+            lines.append("Dont check inverse")
+        if self.max_niss_split > 0:
+            lines.append(f"Allow up to {self.max_niss_split} pre-moves")
+        lines.append(f"Choose {self.retain} for DR attempt")
+        return ". ".join(lines)
+
     @property
     def salt(self):
         return (
@@ -151,6 +162,21 @@ class OptimalDR(DRStrategy, BaseModel):
     )
     seed: Optional[int] = Field(default=None, description="Random seed")
 
+    def description(self) -> str:
+        lines = []
+        if self.include_eo_move_count:
+            lines.append(
+                f"Optimal DR, without breaking EO, up to {self.max_dr_length} moves, including EO"
+            )
+        else:
+            lines.append(
+                f"Optimal DR, without breaking EO, up to {self.max_dr_length}, not including EO"
+            )
+        if not self.check_inverse:
+            lines.append("Dont check inverse")
+        lines.append(f"Choose {self.retain} for finish attempt")
+        return ". ".join(lines)
+
     @property
     def helper(self):
         return DRHelper(
@@ -178,6 +204,16 @@ class SingleAxisDR(DRStrategy, BaseModel):
         default=True, description="Check both normal and inverse"
     )
     seed: Optional[int] = Field(default=None, description="Random seed")
+
+    def description(self) -> str:
+        lines = []
+        lines.append(
+            f"Intuitively findable DRs (pure rzp or jzp), up to {self.max_dr_length} moves, including EO"
+        )
+        if not self.check_inverse:
+            lines.append("Don't check inverse")
+        lines.append(f"Choose {self.retain} for finish attempt")
+        return ". ".join(lines)
 
     @property
     def helper(self):
@@ -210,6 +246,11 @@ class SingleAxisDR(DRStrategy, BaseModel):
 
 class OptimalFinish(FinishStrategy, BaseModel):
 
+    def description(self) -> str:
+        lines = []
+        lines.append(f"Optimal finish without breaking DR")
+        return ". ".join(lines)
+
     def dr_to_finish(self, dr: Step) -> List[Step]:
         finish_step = f"{dr.name.split('-')[0]}fin"
         shortest = nissy(finish_step, dr)[0]
@@ -227,6 +268,11 @@ class EasyCornerOnlyFinish(FinishStrategy, BaseModel):
     max_qt_count: int = Field(
         default=3, description="Don't attempt DR cases with more than this many QTs"
     )
+
+    def description(self) -> str:
+        lines = []
+        lines.append(f"Optimal finish with <= {self.max_qt_count} QTs, not breaking DR")
+        return ". ".join(lines)
 
     def dr_to_finish(self, dr: Step) -> List[Step]:
         finish_step = f"{dr.name.split('-')[0]}fin"
