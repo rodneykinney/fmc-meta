@@ -1,10 +1,9 @@
 from typing import List, Tuple, Optional, Dict
-import sys
 from dataclasses import dataclass
 import multiprocessing
-import argparse
 from os import path
 import re
+import subprocess
 
 from pyhocon import ConfigFactory, ConfigTree  # type: ignore
 import click
@@ -29,6 +28,9 @@ def attempt(
     meta: Meta,
     scramble_moves: List[str],
 ) -> SolutionSet:
+    if fmc_meta._pool is None:
+        fmc_meta._pool = multiprocessing.Pool(processes=multiprocessing.cpu_count())
+
     solutions = SolutionSet(
         scramble=Step(name="scramble", moves=scramble_moves),
         eos=[],
@@ -55,14 +57,14 @@ def run():
     pass
 
 
-@run.command()
+@run.command(help="List pre-configured metas")
 def list():
     print("Available metas:\n")
     for key, cfg in config["options"].items():
         print(f"{key}:\n  {cfg['description']}")
 
 
-@run.command()
+@run.command(help="Show command-line options for pre-configured meta")
 @click.argument("meta")
 def show_options(meta):
     if meta not in config["options"]:
@@ -84,7 +86,8 @@ def show_options(meta):
     context_settings=dict(
         ignore_unknown_options=True,
         allow_extra_args=True,
-    )
+    ),
+    help="Solve a scramble using the specified meta",
 )
 @click.option("--meta", required=True, help="Meta strategy name")
 @click.argument("scramble")
@@ -103,7 +106,6 @@ def solve(ctx, meta, scramble):
 
     print(f"Using meta={meta}")
     print(f"Scramble: {scramble}")
-    fmc_meta._pool = multiprocessing.Pool(processes=multiprocessing.cpu_count())
     solution_set = attempt(
         meta=the_meta,
         scramble_moves=scramble.split(" "),
@@ -112,6 +114,60 @@ def solve(ctx, meta, scramble):
         print("")
         for step in sol.from_beginning():
             print(f"{step} // {step.name} ({step.cumulative_move_count})")
+
+
+@run.command(help="Compare two metas on a set of random scrambles")
+@click.option("--n", help="Number of scrambles to compare", type=int)
+@click.option(
+    "--report", help="File to contain the comparison report (Markdown format)"
+)
+@click.argument("meta1", nargs=1)
+@click.argument("meta2", nargs=1)
+def compare(n: int, report, meta1, meta2):
+    if meta1 not in config["options"]:
+        print(f"No meta named '{meta1}'")
+        exit(1)
+    if meta2 not in config["options"]:
+        print(f"No meta named '{meta2}'")
+        exit(1)
+    m1 = load_meta(config["options"][meta1])
+    m2 = load_meta(config["options"][meta2])
+
+    with open(report, "w") as report:
+        report.write(
+            f"|scramble|{meta1} result|{meta2} result|winner|tie-break winner|\n"
+        )
+        report.write(f"|---|---|---|---|---|\n")
+        for i in range(0, n):
+            output = subprocess.check_output(
+                ["nissy", "scramble"], encoding="UTF8"
+            ).strip()
+            report.write(f"|{output}")
+            scramble_moves = output.split(" ")
+            solutions1 = attempt(m1, scramble_moves)
+            scores1 = [f.cumulative_move_count for f in solutions1.finishes[:3]]
+            scores1_str = "/".join(str(s) for s in scores1)
+            print(f"{meta1} found solutions in {scores1_str}")
+            report.write(f"|{scores1_str}")
+            solutions2 = attempt(m2, scramble_moves)
+            scores2 = [f.cumulative_move_count for f in solutions2.finishes[:3]]
+            scores2_str = "/".join((str(s) for s in scores2))
+            print(f"{meta2} found solutions in {scores2_str}")
+            report.write(f"|{scores2_str}")
+            winner = ""
+            if scores1 and (not scores2 or scores1[0] < scores2[0]):
+                winner = meta1
+            elif scores2 and (not scores1 or scores2[0] < scores1[0]):
+                winner = meta2
+            tie_break_winner = ""
+            if not winner and scores1 and scores2:
+                if tuple(scores1) < tuple(scores2):
+                    tie_break_winner = meta1
+                elif tuple(scores2) < tuple(scores1):
+                    tie_break_winner = meta2
+
+            report.write(f"|{winner or '-'}|{tie_break_winner or '-'}|\n")
+            report.flush()
 
 
 def load_meta(config: ConfigTree, overrides: Optional[Dict] = None) -> Meta:

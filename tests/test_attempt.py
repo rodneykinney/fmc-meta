@@ -9,9 +9,6 @@ from fmc_meta.main import attempt
 
 
 class TestStep(TestCase):
-    def setUp(self) -> None:
-        fmc_meta._pool = multiprocessing.Pool(processes=multiprocessing.cpu_count())
-
     def test_attempt(self):
         meta = Meta(
             eo_strategy=GeneralEO(
