@@ -1,4 +1,4 @@
-import dataclasses
+import itertools
 from typing import List, Tuple, Optional
 import random
 import hashlib
@@ -23,6 +23,10 @@ class GeneralEO(EOStrategy, BaseModel):
     )
     max_niss_split: int = Field(
         default=1, description="Maximum number of moves before NISS"
+    )
+    prefer_axis_diversity: bool = Field(
+        default=False,
+        description="Try to check same number of DRs on each axis if possible",
     )
     seed: Optional[int] = Field(None, description="Random seed")
 
@@ -79,7 +83,23 @@ class GeneralEO(EOStrategy, BaseModel):
         )
 
     def select_eos(self, eos: List[Step]) -> List[Step]:
-        eos = sorted(eos, key=self.sort_order)
+        if not self.prefer_axis_diversity:
+            return sorted(eos, key=self.sort_order)[: self.retain]
+        # Sort each axis individually and merge them
+        eos = sorted(eos, key=lambda s: s.name)
+        eos_by_axis = list(
+            itertools.zip_longest(
+                *(
+                    sorted(list(i), key=self.sort_order)
+                    for _, i in itertools.groupby(eos, lambda s: s.name)
+                )
+            )
+        )
+        eos = []
+        for t in eos_by_axis:
+            eos.extend(x for x in t if x is not None)
+            if len(eos) >= self.retain:
+                break
         eos = eos[: self.retain]
         return eos
 
@@ -160,6 +180,10 @@ class OptimalDR(DRStrategy, BaseModel):
     check_inverse: bool = Field(
         default=True, description="Check both normal and inverse"
     )
+    prefer_axis_diversity: bool = Field(
+        default=False,
+        description="Try to check same number of DRs on each axis if possible",
+    )
     seed: Optional[int] = Field(default=None, description="Random seed")
 
     def description(self) -> str:
@@ -192,7 +216,24 @@ class OptimalDR(DRStrategy, BaseModel):
         return self.helper.find_drs_for_eo(eo, budget)
 
     def select_drs(self, drs: List[Step]) -> List[Step]:
-        return self.helper.order_drs(drs)[: self.retain]
+        if not self.prefer_axis_diversity:
+            return self.helper.order_drs(drs)[: self.retain]
+        # Sort each axis individually and merge them
+        drs = sorted(drs, key=lambda s: s.name)
+        drs_by_axis = list(
+            itertools.zip_longest(
+                *(
+                    self.helper.order_drs(list(i))
+                    for _, i in itertools.groupby(drs, lambda s: s.name)
+                )
+            )
+        )
+        drs = []
+        for t in drs_by_axis:
+            drs.extend(x for x in t if x is not None)
+            if len(drs) >= self.retain:
+                break
+        return drs[: self.retain]
 
 
 class SingleAxisDR(DRStrategy, BaseModel):
@@ -259,7 +300,7 @@ class OptimalFinish(FinishStrategy, BaseModel):
             return [shortest]
         else:
             # Search for equal/longer finishes that may have cancellations
-            finishes = nissy(finish_step, dr, "-M", len(shortest.moves) + 1)
+            finishes = nissy(finish_step, dr, "-M", len(shortest.moves) + 3)
             finishes.sort(key=lambda f: f.cumulative_move_count)
             return finishes[:1]
 
