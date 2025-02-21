@@ -147,12 +147,6 @@ def solve(ctx, meta, top):
 @click.argument("meta1", nargs=1)
 @click.argument("meta2", nargs=1)
 def compare(n: int, report, meta1, meta2):
-    if meta1 not in config["options"]:
-        print(f"No meta named '{meta1}'")
-        exit(1)
-    if meta2 not in config["options"]:
-        print(f"No meta named '{meta2}'")
-        exit(1)
     m1 = load_meta(meta1)
     m2 = load_meta(meta2)
 
@@ -162,16 +156,18 @@ def compare(n: int, report, meta1, meta2):
         )
         report.write(f"|---|---|---|---|---|\n")
         for i in range(0, n):
-            output = subprocess.check_output(
+            scramble_str = subprocess.check_output(
                 ["nissy", "scramble"], encoding="UTF8"
             ).strip()
-            report.write(f"|{output}")
-            scramble_moves = output.split(" ")
+            report.write(f"|{scramble_str}")
+            scramble_moves = scramble_str.split(" ")
+            print(f"Using {meta1} on {scramble_str}")
             solutions1 = attempt(m1, scramble_moves)
             scores1 = [f.cumulative_move_count for f in solutions1.finishes[:3]]
             scores1_str = "/".join(str(s) for s in scores1)
             print(f"{meta1} found solutions in {scores1_str}")
             report.write(f"|{scores1_str}")
+            print(f"Using {meta2} on {scramble_str}")
             solutions2 = attempt(m2, scramble_moves)
             scores2 = [f.cumulative_move_count for f in solutions2.finishes[:3]]
             scores2_str = "/".join((str(s) for s in scores2))
