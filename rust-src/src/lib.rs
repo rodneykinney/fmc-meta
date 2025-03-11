@@ -3,6 +3,7 @@ use std::str::FromStr;
 use std::collections::HashMap;
 
 use pyo3::exceptions::PyValueError;
+use pyo3::FromPyObject;
 // use pyo3::types::PyDict;
 
 use cubelib::algs::{Algorithm as LibAlgorithm};
@@ -12,34 +13,75 @@ use cubelib::solver::solution::{Solution as LibSolution, SolutionStep as LibSolu
 use cubelib::defs::{StepKind as LibStepKind, NissSwitchType};
 use cubelib::solver::df_search::CancelToken;
 use cubelib::steps::tables::PruningTables333;
-use cubelib::steps::step::{StepConfig};
+use cubelib::steps::step::{StepConfig as LibStepConfig};
 use cubelib::steps::{solver};
 
-#[pyfunction]
-fn solve(scramble: &str) -> PyResult<Vec<Solution>> {
-    let alg = LibAlgorithm::from_str(scramble).map_err(|_| PyValueError::new_err("Invalid scramble"))?;
-    let mut cube = Cube333::default();
-    cube.apply_alg(&alg);
+#[pyclass]
+#[derive(FromPyObject)]
+struct StepConfig {
+    kind: String,
+    substeps: Option<Vec<String>>,
+    min: Option<u8>,
+    max: Option<u8>,
+    absolute_min: Option<u8>,
+    absolute_max: Option<u8>,
+    step_limit: Option<usize>,
+    niss: Option<String>,
+    params: Option<HashMap<String, String>>,
+}
 
-    let mut tables = PruningTables333::new();
-    let step_configs = vec![StepConfig {
-        kind: LibStepKind::EO,
-        substeps: None,
-        min: None,
-        max: None,
-        absolute_min: None,
-        absolute_max: None,
-        niss: Some(NissSwitchType::Never),
-        step_limit: None,
-        quality: 0,
-        params: HashMap::new(),
-    }];
-
-    solver::gen_tables(&step_configs, &mut tables);
-    let steps = solver::build_steps(step_configs, &tables).map_err(|e| PyValueError::new_err(format!("Error building steps: {:?}", e)))?;
-
-    let solutions = cubelib::solver::solve_steps(cube, &steps, &CancelToken::default());
-    Ok(solutions.into_iter().map(Solution).collect())
+#[pymethods]
+impl StepConfig {
+    #[new]
+    fn new(kind: String, niss: Option<String>, params: Option<HashMap<String, String>>, substeps: Option<Vec<String>>, min: Option<u8>, max: Option<u8>, absolute_min: Option<u8>, absolute_max: Option<u8>, step_limit: Option<usize>) -> PyResult<Self> {
+        Ok(StepConfig {
+            kind: kind,
+            substeps: substeps,
+            min: min,
+            max: max,
+            absolute_min: absolute_min,
+            absolute_max: absolute_max,
+            niss: niss,
+            step_limit: step_limit,
+            params: params,
+        })
+    }
+    #[getter]
+    fn kind(&self) -> String {
+        self.kind.clone()
+    }
+    #[getter]
+    fn substeps(&self) -> Option<Vec<String>> {
+        self.substeps.clone()
+    }
+    #[getter]
+    fn min(&self) -> Option<u8> {
+        self.min
+    }
+    #[getter]
+    fn max(&self) -> Option<u8> {
+        self.max
+    }
+    #[getter]
+    fn absolute_min(&self) -> Option<u8> {
+        self.absolute_min
+    }
+    #[getter]
+    fn absolute_max(&self) -> Option<u8> {
+        self.absolute_max
+    }
+    #[getter]
+    fn step_limit(&self) -> Option<usize> {
+        self.step_limit
+    }
+    #[getter]
+    fn niss(&self) -> Option<String> {
+        self.niss.clone()
+    }
+    #[getter]
+    fn params(&self) -> Option<HashMap<String, String>> {
+        self.params.clone()
+    }
 }
 
 #[pyclass]
@@ -85,9 +127,6 @@ impl Solution {
 }
 
 #[pyclass]
-struct Algorithm(LibAlgorithm);
-
-#[pyclass]
 struct StepKind(LibStepKind);
 
 #[pymethods]
@@ -97,14 +136,15 @@ impl StepKind {
     }
 }
 
+#[pyclass]
+struct Algorithm(LibAlgorithm);
+
 #[pymethods]
 impl Algorithm {
     #[new]
     fn new(s: &str) -> PyResult<Self> {
-        match LibAlgorithm::from_str(s) {
-            Ok(alg) => Ok(Algorithm(alg)),
-            Err(_) => Err(pyo3::exceptions::PyValueError::new_err("Invalid algorithm")),
-        }
+        let alg = LibAlgorithm::from_str(s).map_err(|_| PyValueError::new_err("Invalid algorithm"))?;
+        Ok(Algorithm(alg))
     }
 
     fn __repr__(&self) -> String {
@@ -139,6 +179,35 @@ impl Cube {
     }
 }
 
+#[pyfunction]
+fn solve(scramble: &str, step_configs: Vec<StepConfig>) -> PyResult<Vec<Solution>> {
+    let alg = LibAlgorithm::from_str(scramble).map_err(|_| PyValueError::new_err("Invalid scramble"))?;
+    let mut cube = Cube333::default();
+    cube.apply_alg(&alg);
+
+    let mut tables = PruningTables333::new();
+    let step_configs = vec![LibStepConfig {
+        kind: LibStepKind::EO,
+        substeps: None,
+        min: None,
+        max: None,
+        absolute_min: None,
+        absolute_max: None,
+        niss: Some(NissSwitchType::Never),
+        step_limit: None,
+        quality: 0,
+        params: HashMap::new(),
+    }];
+
+    solver::gen_tables(&step_configs, &mut tables);
+    let steps = solver::build_steps(step_configs, &tables).map_err(|e| PyValueError::new_err(format!("Error building steps: {:?}", e)))?;
+
+    let solutions = cubelib::solver::solve_steps(cube, &steps, &CancelToken::default());
+    Ok(solutions.into_iter().map(Solution).collect())
+}
+
+
+
 // The Python module definition
 #[pymodule]
 fn py_cubelib(_py: Python, m: &PyModule) -> PyResult<()> {
@@ -147,7 +216,7 @@ fn py_cubelib(_py: Python, m: &PyModule) -> PyResult<()> {
     // m.add_class::<Algorithm>()?;
     // m.add_class::<Solution>()?;
     // m.add_class::<SolutionStep>()?;
-    //m.add_class::<StepKind>()?;
+    m.add_class::<StepConfig>()?;
 
     m.add_function(wrap_pyfunction!(solve, m)?)?;
     Ok(())
