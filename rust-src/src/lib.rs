@@ -82,6 +82,9 @@ impl StepConfig {
     fn params(&self) -> Option<HashMap<String, String>> {
         self.params.clone()
     }
+    fn __repr__(&self) -> String {
+        format!("StepConfig {{ kind: {}, substeps: {:?}, min: {:?}, max: {:?}, absolute_min: {:?}, absolute_max: {:?}, step_limit: {:?}, niss: {:?}, params: {:?} }}", self.kind, self.substeps, self.min, self.max, self.absolute_min, self.absolute_max, self.step_limit, self.niss, self.params)
+    }
 }
 
 #[pyclass]
@@ -186,18 +189,28 @@ fn solve(scramble: &str, step_configs: Vec<StepConfig>) -> PyResult<Vec<Solution
     cube.apply_alg(&alg);
 
     let mut tables = PruningTables333::new();
-    let step_configs = vec![LibStepConfig {
-        kind: LibStepKind::EO,
-        substeps: None,
-        min: None,
-        max: None,
-        absolute_min: None,
-        absolute_max: None,
-        niss: Some(NissSwitchType::Never),
-        step_limit: None,
-        quality: 0,
-        params: HashMap::new(),
-    }];
+    let step_configs = step_configs.into_iter().map(|s| {
+        let niss = s.niss.as_ref().map(|n| {
+            match n.as_str() {
+                "never" => NissSwitchType::Never,
+                "always" => NissSwitchType::Always,
+                "before" => NissSwitchType::Before,
+                _ => NissSwitchType::Never,
+            }
+        });
+        LibStepConfig {
+            kind: LibStepKind::from_str(&s.kind).unwrap(),
+            substeps: s.substeps,
+            min: s.min,
+            max: s.max,
+            absolute_min: s.absolute_min,
+            absolute_max: s.absolute_max,
+            niss: niss,
+            step_limit: s.step_limit,
+            quality: 0,
+            params: s.params.unwrap_or_default(),
+        }
+    }).collect();
 
     solver::gen_tables(&step_configs, &mut tables);
     let steps = solver::build_steps(step_configs, &tables).map_err(|e| PyValueError::new_err(format!("Error building steps: {:?}", e)))?;
@@ -212,10 +225,10 @@ fn solve(scramble: &str, step_configs: Vec<StepConfig>) -> PyResult<Vec<Solution
 #[pymodule]
 fn py_cubelib(_py: Python, m: &PyModule) -> PyResult<()> {
     // Register the classes
-    // m.add_class::<Cube>()?;
-    // m.add_class::<Algorithm>()?;
-    // m.add_class::<Solution>()?;
-    // m.add_class::<SolutionStep>()?;
+    m.add_class::<Cube>()?;
+    m.add_class::<Algorithm>()?;
+    m.add_class::<Solution>()?;
+    m.add_class::<SolutionStep>()?;
     m.add_class::<StepConfig>()?;
 
     m.add_function(wrap_pyfunction!(solve, m)?)?;
