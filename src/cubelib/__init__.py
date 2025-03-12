@@ -1,17 +1,51 @@
+import py_cubelib
 
-from py_cubelib import (Solution as RSolution, Cube as RCube,)
 
 class Attempt():
-    def __init__(self, cube: RCube):
-        self.cube = cube
-        self.solutions = [RSolution()]
+    def __init__(self, scramble: str, solutions: list = None):
+        self.scramble = scramble
+        self.cube = py_cubelib.Cube(scramble)
+        self.solutions = solutions or []
 
-    def eo(self, max_moves: int = 1, check_inverse: bool = True, max_niss_split: int = 0, retain: int = 50):
-        self.solutions[0].eo = eo
-        return self
+    def find_eos(
+            self,
+            max_moves: int = 1,
+            absolute: bool = True,
+            niss: str = "always",
+            limit: int = 50
+    ) -> "Attempt":
+        max, abs_max = (None, max_moves) if absolute else (max_moves, None)
+        cfg = py_cubelib.StepConfig(
+            kind="eo",
+            max=max,
+            absolute_max=abs_max,
+            step_limit=limit,
+            niss=niss
+        )
+        solutions = py_cubelib.solve(self.scramble, [cfg])
+        return Attempt(self.scramble, solutions)
 
-    def dr(self, dr: str):
-        self.solutions[0].dr = dr
+    def add_eo(self, alg: str) -> "Attempt":
+        solutions = [py_cubelib.SolutionStep(kind="eo", alg=alg)]
+        return Attempt(self.scramble, solutions)
+
+    def find_drs(
+            self,
+            max_moves: int = 1,
+            absolute: bool = True,
+            niss: str = "always",
+            limit: int = 50,
+    ):
+        max, abs_max = (None, max_moves) if absolute else (max_moves, None)
+        cfg = py_cubelib.StepConfig(
+            kind="dr",
+            max=max,
+            absolute_max=abs_max,
+            step_limit=limit,
+            niss=niss
+        )
+        solutions = py_cubelib.solve(self.scramble, [cfg])
+        return Attempt(self.scramble, solutions)
         return self
 
     def htr(self, htr: str):
@@ -22,5 +56,8 @@ class Attempt():
         self.solutions[0].finish = finish
         return self
 
-def hello():
-    print("Hello from py_cubelib!")
+if __name__ == "__main__":
+    attempt = Attempt("R U F")
+    attempt = attempt.find_eos(max_moves=3, absolute=False)
+    print(attempt.solutions[0:10])
+    attempt = attempt.find_drs()
