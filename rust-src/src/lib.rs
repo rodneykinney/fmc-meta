@@ -196,7 +196,7 @@ impl Cube {
 }
 
 #[pyfunction]
-fn solve_step(cube: Cube, solutions: Vec<Solution>, step_config: StepConfig) -> PyResult<Vec<Solution>> {
+fn solve_step(cube: Cube, step_config: StepConfig, solutions: Vec<Solution>) -> PyResult<Vec<Solution>> {
     // let alg = LibAlgorithm::from_str(&scramble).map_err(|_| PyValueError::new_err("Invalid scramble"))?;
     // let mut cube = Cube333::default();
     // cube.apply_alg(&alg);
@@ -226,9 +226,15 @@ fn solve_step(cube: Cube, solutions: Vec<Solution>, step_config: StepConfig) -> 
     }).collect();
 
     solver::gen_tables(&step_configs, &mut tables);
-    let s = &solver::build_steps(step_configs.clone(), &tables).map_err(|e| PyValueError::new_err(format!("Error building steps: {:?}", e)))?[0];
+    let (step, options) = &solver::build_steps(step_configs.clone(), &tables).map_err(|e| PyValueError::new_err(format!("Error building steps: {:?}", e)))?[0];
 
     let cancel_token = CancelToken::default();
+    let solutions = if solutions.is_empty() {
+        vec![Solution(LibSolution::new())]
+    }
+    else {
+        solutions
+    };
     // let solutions = cubelib::solver::solve_steps(cube.0, &steps, &CancelToken::default());
     // Ok(solutions.into_iter().map(Solution).collect())
     let solutions: Vec<Solution> = solutions
@@ -236,8 +242,8 @@ fn solve_step(cube: Cube, solutions: Vec<Solution>, step_config: StepConfig) -> 
         .flat_map(|solution| {
             next_step(
                 vec![solution.0.clone()].into_iter(),
-                &s.0,
-                s.1.clone(),
+                &step,
+                options.clone(),
                 cube.0.clone(),
                 &cancel_token,
             ).map(|s| Solution(s)).collect::<Vec<_>>()

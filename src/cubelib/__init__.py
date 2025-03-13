@@ -22,7 +22,7 @@ class Attempt():
             step_limit=limit,
             niss=niss
         )
-        solutions = py_cubelib.solve(self.scramble, [cfg])
+        solutions = py_cubelib.solve_step(self.cube, cfg, self.solutions)
         return Attempt(self.scramble, solutions)
 
     def add_eo(self, alg: str) -> "Attempt":
@@ -31,9 +31,9 @@ class Attempt():
 
     def find_drs(
             self,
-            max_moves: int = 1,
+            max_moves: int = 12,
             absolute: bool = True,
-            niss: str = "always",
+            niss: str = "never",
             limit: int = 50,
     ):
         max, abs_max = (None, max_moves) if absolute else (max_moves, None)
@@ -44,9 +44,8 @@ class Attempt():
             step_limit=limit,
             niss=niss
         )
-        solutions = py_cubelib.solve(self.scramble, [cfg])
+        solutions = py_cubelib.solve_step(self.cube, cfg, self.solutions)
         return Attempt(self.scramble, solutions)
-        return self
 
     def htr(self, htr: str):
         self.solutions[0].htr = htr
@@ -61,3 +60,4 @@ if __name__ == "__main__":
     attempt = attempt.find_eos(max_moves=3, absolute=False)
     print(attempt.solutions[0:10])
     attempt = attempt.find_drs()
+    print(attempt.solutions[:10])
