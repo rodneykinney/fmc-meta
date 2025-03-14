@@ -182,16 +182,31 @@ impl Cube {
         Ok(Cube(cube))
     }
 
-    fn edges(&self) -> PyResult<Vec<u64>> {
+    fn edges(&self) -> PyResult<Vec<(u8, u8)>> {
         let bytes = self.0.edges.get_edges_raw();
         let mut edges = vec![];
         for i in 0..8 {
-            edges.push(bytes[0] << (8 * i) & 0xff);
+            let id = (bytes[0] >> (8 * i + 4) & 0xf) as u8;
+            let orientation = (bytes[0] >> (8 * i + 1) & 0x7) as u8;
+            edges.push((id, orientation));
         }
         for i in 0..4 {
-            edges.push(bytes[1] << (8 * i) & 0xff);
+            let id = (bytes[1] >> (8 * i + 4) & 0xf) as u8;
+            let orientation = (bytes[1] >> (8 * i + 1) & 0x7) as u8;
+            edges.push((id, orientation));
         }
         Ok(edges)
+    }
+
+    fn corners(&self) -> PyResult<Vec<(u8, u8)>> {
+        let bytes = self.0.corners.get_corners_raw();
+        let mut corners = vec![];
+        for i in 0..8 {
+            let id = (bytes >> (8 * i + 5) & 0x7) as u8;
+            let orientation = (bytes >> (8 * i) & 0x3) as u8;
+            corners.push((id, orientation));
+        }
+        Ok(corners)
     }
 }
 
