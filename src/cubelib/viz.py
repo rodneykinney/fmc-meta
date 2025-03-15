@@ -1,3 +1,6 @@
+import sys
+import logging
+
 import pygame
 from pygame.locals import *
 from OpenGL.GL import *
@@ -63,10 +66,6 @@ corner_position_facelets = [
     (53, 35, 42),  # DBR
     (51, 44, 15),  # DBL
 ]
-# orientation = 0: [0,1,2] gets [0,1,2]
-# orientation = 1: [0,1,2] gets [2,0,1]
-# # orientation = 2: [0,1,2] gets [1,2,0]
-corner_rotation = [0, 2, 1]
 
 edge_piece_colors = [
     (WHITE, BLUE),
@@ -113,9 +112,10 @@ class CubeViz():
 
     def __init__(
             self,
+            scramble="",
             width=800,
             height=600,
-            opacity=1,  # Set the opacity for the colors
+            opacity=.9,  # Set the opacity for the colors
     ):
         # Set up the display
         self.display_width = width
@@ -138,16 +138,50 @@ class CubeViz():
         self.z_angle = -30
         self.y_angle = 0
 
-        self.set_cube("")  # Set the initial cube state
+        self.scramble = scramble
+        self.cube = py_cubelib.Cube(self.scramble)
+        self.set_mode("")
 
     def set_cube(self, setup: str):
-        print("Setting cube state:", setup)
+        logging.debug(f"Setting cube to {setup}")
         self.cube = py_cubelib.Cube(setup)
         self.set_colors()
 
+    def set_mode(self, mode: str):
+        logging.debug(f"Setting mode to {mode}")
+        if mode == "eofb":
+            self.should_draw_edge = self.is_bad_eofb
+            self.should_draw_corner = self.do_not_draw
+        elif mode == "eorl":
+            self.should_draw_edge = self.is_bad_eorl
+            self.should_draw_corner = self.do_not_draw
+        elif mode == "eoud":
+            self.should_draw_edge = self.is_bad_eoud
+            self.should_draw_corner = self.do_not_draw
+        else:
+            self.should_draw_edge = self.do_draw
+            self.should_draw_corner = self.do_draw
+        self.mode = mode
+        self.set_colors()
+
+    def do_draw(self, pos_id, piece_id, orientation):
+        return True
+
+    def do_not_draw(self, pos_id, piece_id, orientation):
+        return False
+
+    def is_bad_eofb(self, pos_id, piece_id, orientation):
+        return orientation & 2 > 0
+
+    def is_bad_eoud(self, pos_id, piece_id, orientation):
+        return orientation & 4 > 0
+
+    def is_bad_eorl(self, pos_id, piece_id, orientation):
+        return orientation & 1 > 0
+
     def set_colors(self):
         edges = self.cube.edges
-        self.colors = [(0.75, 0.75, 0.75, 0.25)] * 54
+        self.colors = [(0.75, 0.75, 0.75, 0.3)] * 54
         self.colors[4] = WHITE + (self.opacity,)
         self.colors[13] = ORANGE + (self.opacity,)
         self.colors[22] = GREEN + (self.opacity,)
@@ -157,19 +191,27 @@ class CubeViz():
         corners = self.cube.corners()
         for i in range(0, 8):
             piece_id, orientation = corners[i]
+            if not self.should_draw_corner(i, piece_id, orientation):
+                continue
             for side in range(0, 3):
-                o = (side + 3 - orientation) % 3
+                face = (side + 3 - orientation) % 3
                 self.colors[corner_position_facelets[i][side]] = (
-                        corner_piece_colors[piece_id][o] +
+                        corner_piece_colors[piece_id][face] +
                         (self.opacity,))
         edges = self.cube.edges()
-        # for i in range(0, 12):
-        #     orientation = default_orientation[home_slice[edges[i][0]] ^ home_slice[i]]
-        #     flipped = 0 if edges[i][1] == orientation else 1
-        #     for side in range(0, 2):
-        #         self.colors[edge_position_facelets[i][side]] = edge_piece_colors[edges[i][0]][
-        #                                                            (side + flipped) % 2] + (
-        #                                                            self.opacity,)
+        for i in range(0, 12):
+            piece_id, piece_orientation = edges[i]
+            if not self.should_draw_edge(i, piece_id, piece_orientation):
+                continue
+            orientation = default_orientation[home_slice[piece_id] ^ home_slice[i]]
+            flipped = 0 if piece_orientation == orientation else 1
+            for side in range(0, 2):
+                self.colors[edge_position_facelets[i][side]] = edge_piece_colors[edges[i][0]][
+                                                                   (side + flipped) % 2] + (
+                                                                   self.opacity,)
+
+        pygame.display.flip()
+
 
     def draw_facelet(self, x, y, z, color, axis='xy'):
         """Draw a single face of the cube"""
@@ -201,7 +243,7 @@ class CubeViz():
 
     def draw(self):
         # Clear the screen
-        glClearColor(.2, .2, .2, 1.0)
+        glClearColor(.3, .3, .3, 1.0)
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
 
         # Set camera position
@@ -244,64 +286,68 @@ class CubeViz():
     def rotate(self, z_angle, y_angle=0):
         self.z_angle += z_angle
         self.y_angle += y_angle
-        print(f"Rotation angle: {self.z_angle}")
 
     def move_camera(self, dx, dy, dz):
         """Move the camera position"""
         self.camera_x += dx
         self.camera_y += dy
         self.camera_z += dz
-        print(f"Camera position: ({self.camera_x}, {self.camera_y}, {self.camera_z})")
 
+    def stop(self):
+        self.running = False
 
-def main():
-    # Initialize pygame
-    pygame.init()
+    def run(self):
+        # Initialize pygame
+        pygame.init()
+    
+        clock = pygame.time.Clock()
+        self.running = True
+    
+        scramble = self.scramble.split(" ")
+    
+        modes = ["", "eofb", "eorl", "eoud"]
+    
+        while self.running:
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    running = False
+    
+                scramble_changed = False
+                if event.type == pygame.KEYDOWN:
+                    if event.key == pygame.K_UP:
+                        # self.move_camera(0, 0, 2)
+                        self.rotate(0, 12)
+                    if event.key == pygame.K_DOWN:
+                        # self.move_camera(0, 0, -2)
+                        self.rotate(0, -12)
+                    if event.key == pygame.K_LEFT:
+                        self.rotate(-12, 0)
+                    if event.key == pygame.K_RIGHT:
+                        self.rotate(12, 0)
+                    # if event.key in {pygame.K_r, pygame.K_u, pygame.K_f, pygame.K_l, pygame.K_b,
+                    #                  pygame.K_d}:
+                    #     scramble.append(pygame.key.name(event.key))
+                    #     scramble_changed = True
+                    # if event.key == pygame.K_QUOTE and scramble:
+                    #     scramble[-1] = f"{scramble[-1]}'".replace("''", "").replace("2'", "2")
+                    #     scramble_changed = True
+                    # if event.key == pygame.K_2 and scramble:
+                    #     scramble[-1] = f"{scramble[-1]}2".replace("22", "").replace("'2", "2")
+                    #     scramble_changed = True
+                    # if event.key == pygame.K_m:
+                    #     self.set_mode(modes[(modes.index(self.mode) + 1) % len(modes)])
+    
+                if scramble_changed:
+                    self.set_cube(" ".join(scramble))
+                clock.tick(30)
 
-    viz = CubeViz()
-    clock = pygame.time.Clock()
-    running = True
-
-    scramble = []
-
-    while running:
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                running = False
-
-            scramble_changed = False
-            if event.type == pygame.KEYDOWN:
-                if event.key == pygame.K_UP:
-                    # viz.move_camera(0, 0, 2)
-                    viz.rotate(0, 12)
-                if event.key == pygame.K_DOWN:
-                    # viz.move_camera(0, 0, -2)
-                    viz.rotate(0, -12)
-                if event.key == pygame.K_LEFT:
-                    viz.rotate(-12, 0)
-                if event.key == pygame.K_RIGHT:
-                    viz.rotate(12, 0)
-                if event.key in {pygame.K_r, pygame.K_u, pygame.K_f, pygame.K_l, pygame.K_b,
-                                 pygame.K_d}:
-                    scramble.append(pygame.key.name(event.key))
-                    scramble_changed = True
-                if event.key == pygame.K_QUOTE and scramble:
-                    scramble[-1] = f"{scramble[-1]}'".replace("''", "").replace("2'", "2")
-                    scramble_changed = True
-                if event.key == pygame.K_2 and scramble:
-                    scramble[-1] = f"{scramble[-1]}2".replace("22", "").replace("'2", "2")
-                    scramble_changed = True
-
-            if scramble_changed:
-                viz.set_cube(" ".join(scramble))
-            viz.draw()
-
+            self.draw()
             # Update the display
             pygame.display.flip()
-            clock.tick(30)
-
-    pygame.quit()
+        pygame.quit()
 
 
 if __name__ == "__main__":
-    main()
+    viz = CubeViz()
+    viz.set_cube(sys.argv[1])
+    viz.run()
