@@ -2,6 +2,7 @@ import threading
 import sys
 import traceback
 import logging
+from collections import defaultdict
 
 logging.basicConfig(
     filename="fmc-meta.log", filemode="w",
@@ -15,6 +16,7 @@ _mode = ""
 _scramble = ""
 _running = True
 _alg = []
+_step_algs = defaultdict(list)
 
 
 def scramble(str):
@@ -28,6 +30,15 @@ def scramble(str):
 def reset():
     _alg.clear()
     viz.set_cube(_scramble)
+
+def save():
+    _step_algs[_mode].append(" ".join(_alg))
+    reset()
+
+def list():
+    print(f"{_mode.upper()}:")
+    for i, alg in enumerate(_step_algs.get(_mode, [])):
+        print(f"{i+1}: {alg}")
 
 def append_move(move):
     _alg.append(move)

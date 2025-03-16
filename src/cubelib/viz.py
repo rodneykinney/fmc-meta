@@ -5,6 +5,7 @@ import pygame
 from pygame.locals import *
 from OpenGL.GL import *
 from OpenGL.GLU import *
+import math
 import py_cubelib
 
 # U + L + F + R + B + D
@@ -42,7 +43,7 @@ YELLOW = (1, 1, 0)
 GREEN = (0, .7, 0)
 BLUE = (0, 0, 1)
 RED = (1, 0, 0)
-ORANGE = (1, .5, .2)
+ORANGE = (1, .4, .3)
 GREY = (0.75, 0.75, 0.75)
 
 corner_piece_colors = [
@@ -254,44 +255,35 @@ class CubeViz():
                   0, 1, 0)  # Up vector
 
         glRotatef(self.z_angle, 0, 0, 1)
-        glRotatef(self.y_angle, 0, 1, 0)
+        #glRotatef(self.y_angle, 0, 1, 0)
 
-        """Draw facelets from back to front"""
-        # D
-        for i in range(45, 54):
-            self.draw_facelet(facelet_x[i], facelet_y[i], facelet_z[i],
-                              self.colors[i], axis[i])
-        # B
-        for i in range(36, 45):
-            self.draw_facelet(facelet_x[i], facelet_y[i], facelet_z[i],
-                              self.colors[i], axis[i])
-        # L
-        for i in range(9, 18):
-            self.draw_facelet(facelet_x[i], facelet_y[i], facelet_z[i],
-                              self.colors[i], axis[i])
-        # R
-        for i in range(27, 36):
-            self.draw_facelet(facelet_x[i], facelet_y[i], facelet_z[i],
-                              self.colors[i], axis[i])
+        """Order facelets from back to front"""
+        def distance(i):
+            c,s = math.cos(self.z_angle * math.pi / 180), math.sin(self.z_angle * math.pi / 180)
+            return ((facelet_x[i]*c - facelet_y[i]*s) - self.camera_x) ** 2 + \
+                ((facelet_x[i]*s + facelet_y[i]*c) - self.camera_y) ** 2 + \
+                (facelet_z[i] - self.camera_z) ** 2
+        faces = [
+            (range(9*i, 9*(i+1)),distance(9*i + 4)) for i in range(0,6)
+        ]
+        faces.sort(key=lambda x: -x[1])
+        faces = [f for f,d in faces]
 
-        # F
-        for i in range(18, 27):
-            self.draw_facelet(facelet_x[i], facelet_y[i], facelet_z[i],
-                              self.colors[i], axis[i])
-        # U
-        for i in range(0, 9):
-            self.draw_facelet(facelet_x[i], facelet_y[i], facelet_z[i],
-                              self.colors[i], axis[i])
+        for face in faces:
+            for i in face:
+                self.draw_facelet(facelet_x[i], facelet_y[i], facelet_z[i],
+                                  self.colors[i], axis[i])
 
     def rotate(self, z_angle, y_angle=0):
         self.z_angle += z_angle
         self.y_angle += y_angle
 
-    def move_camera(self, dx, dy, dz):
-        """Move the camera position"""
-        self.camera_x += dx
-        self.camera_y += dy
-        self.camera_z += dz
+
+    # def move_camera(self, dx, dy, dz):
+    #     """Move the camera position"""
+    #     self.camera_x += dx
+    #     self.camera_y += dy
+    #     self.camera_z += dz
 
     def stop(self):
         self.running = False
@@ -316,14 +308,14 @@ class CubeViz():
                 if event.type == pygame.KEYDOWN:
                     if event.key == pygame.K_UP:
                         # self.move_camera(0, 0, 2)
-                        self.rotate(0, 12)
+                        self.rotate(0, 10)
                     if event.key == pygame.K_DOWN:
                         # self.move_camera(0, 0, -2)
-                        self.rotate(0, -12)
+                        self.rotate(0, -10)
                     if event.key == pygame.K_LEFT:
-                        self.rotate(-12, 0)
+                        self.rotate(-10, 0)
                     if event.key == pygame.K_RIGHT:
-                        self.rotate(12, 0)
+                        self.rotate(10, 0)
                     # if event.key in {pygame.K_r, pygame.K_u, pygame.K_f, pygame.K_l, pygame.K_b,
                     #                  pygame.K_d}:
                     #     scramble.append(pygame.key.name(event.key))
