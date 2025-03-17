@@ -1,12 +1,13 @@
 import sys
 import logging
+import os
 
 import pygame
 from pygame.locals import *
 from OpenGL.GL import *
 from OpenGL.GLU import *
 import math
-import py_cubelib
+from py_cubelib import (Cube, Solution)
 
 # U + L + F + R + B + D
 facelet_x = \
@@ -122,6 +123,7 @@ class CubeViz():
         self.display_width = width
         self.display_height = height
         self.opacity = opacity
+        os.environ['SDL_VIDEO_WINDOW_POS'] = '0,0'
         pygame.display.set_mode((self.display_width, self.display_height), DOUBLEBUF | OPENGL)
         pygame.display.set_caption("")
 
@@ -139,14 +141,26 @@ class CubeViz():
         self.z_angle = -30
         self.y_angle = 0
 
+        self.set_scramble(scramble)
+
+    def set_scramble(self, scramble: str):
+        logging.debug(f"Setting scramble to {scramble}")
         self.scramble = scramble
-        self.cube = py_cubelib.Cube(self.scramble)
-        self.set_mode("")
+        self.set_solution(Solution())
 
     def set_cube(self, setup: str):
         logging.debug(f"Setting cube to {setup}")
-        self.cube = py_cubelib.Cube(setup)
+        self.cube = Cube(setup)
         self.set_colors()
+
+    def set_solution(self, solution: Solution):
+        self.cube = Cube(self.scramble)
+        self.solution = solution
+        self.cube.apply(solution)
+        mode = ""
+        if self.solution.steps:
+            mode = f"{self.solution.steps[-1].kind}{self.solution.steps[-1].variant}"
+        self.set_mode(mode)
 
     def set_mode(self, mode: str):
         logging.debug(f"Setting mode to {mode}")
@@ -159,29 +173,30 @@ class CubeViz():
         elif mode == "eoud":
             self.should_draw_edge = self.is_bad_eoud
             self.should_draw_corner = self.do_not_draw
+        elif mode == "drud":
+            self.should_draw_edge = lambda pos, piece, o, f: o & 3 > 0
+            self.should_draw_corner = lambda pos, piece, o, f: o != 0 and o == f
         else:
             self.should_draw_edge = self.do_draw
             self.should_draw_corner = self.do_draw
-        self.mode = mode
         self.set_colors()
 
-    def do_draw(self, pos_id, piece_id, orientation):
+    def do_draw(self, pos_id, piece_id, orientation, face):
         return True
 
-    def do_not_draw(self, pos_id, piece_id, orientation):
+    def do_not_draw(self, pos_id, piece_id, orientation, face):
         return False
 
-    def is_bad_eofb(self, pos_id, piece_id, orientation):
+    def is_bad_eofb(self, pos_id, piece_id, orientation, face):
         return orientation & 2 > 0
 
-    def is_bad_eoud(self, pos_id, piece_id, orientation):
+    def is_bad_eoud(self, pos_id, piece_id, orientation, face):
         return orientation & 4 > 0
 
-    def is_bad_eorl(self, pos_id, piece_id, orientation):
+    def is_bad_eorl(self, pos_id, piece_id, orientation, face):
         return orientation & 1 > 0
 
     def set_colors(self):
-        edges = self.cube.edges
         self.colors = [(0.75, 0.75, 0.75, 0.3)] * 54
         self.colors[4] = WHITE + (self.opacity,)
         self.colors[13] = ORANGE + (self.opacity,)
@@ -192,9 +207,9 @@ class CubeViz():
         corners = self.cube.corners()
         for i in range(0, 8):
             piece_id, orientation = corners[i]
-            if not self.should_draw_corner(i, piece_id, orientation):
-                continue
             for side in range(0, 3):
+                if not self.should_draw_corner(i, piece_id, orientation, side):
+                    continue
                 face = (side + 3 - orientation) % 3
                 self.colors[corner_position_facelets[i][side]] = (
                         corner_piece_colors[piece_id][face] +
@@ -202,17 +217,16 @@ class CubeViz():
         edges = self.cube.edges()
         for i in range(0, 12):
             piece_id, piece_orientation = edges[i]
-            if not self.should_draw_edge(i, piece_id, piece_orientation):
-                continue
             orientation = default_orientation[home_slice[piece_id] ^ home_slice[i]]
             flipped = 0 if piece_orientation == orientation else 1
             for side in range(0, 2):
+                if not self.should_draw_edge(i, piece_id, piece_orientation, side):
+                    continue
                 self.colors[edge_position_facelets[i][side]] = edge_piece_colors[edges[i][0]][
                                                                    (side + flipped) % 2] + (
                                                                    self.opacity,)
 
         pygame.display.flip()
-
 
     def draw_facelet(self, x, y, z, color, axis='xy'):
         """Draw a single face of the cube"""
@@ -255,29 +269,48 @@ class CubeViz():
                   0, 1, 0)  # Up vector
 
         glRotatef(self.z_angle, 0, 0, 1)
-        #glRotatef(self.y_angle, 0, 1, 0)
+        # glRotatef(self.y_angle, 0, 1, 0)
 
-        """Order facelets from back to front"""
+        """Order faces from back to front"""
+
         def distance(i):
-            c,s = math.cos(self.z_angle * math.pi / 180), math.sin(self.z_angle * math.pi / 180)
-            return ((facelet_x[i]*c - facelet_y[i]*s) - self.camera_x) ** 2 + \
-                ((facelet_x[i]*s + facelet_y[i]*c) - self.camera_y) ** 2 + \
+            c, s = math.cos(self.z_angle * math.pi / 180), math.sin(self.z_angle * math.pi / 180)
+            return ((facelet_x[i] * c - facelet_y[i] * s) - self.camera_x) ** 2 + \
+                ((facelet_x[i] * s + facelet_y[i] * c) - self.camera_y) ** 2 + \
                 (facelet_z[i] - self.camera_z) ** 2
+
         faces = [
-            (range(9*i, 9*(i+1)),distance(9*i + 4)) for i in range(0,6)
+            (range(9 * i, 9 * (i + 1)), distance(9 * i + 4)) for i in range(0, 6)
         ]
         faces.sort(key=lambda x: -x[1])
-        faces = [f for f,d in faces]
+        faces = [f for f, d in faces]
 
         for face in faces:
             for i in face:
                 self.draw_facelet(facelet_x[i], facelet_y[i], facelet_z[i],
                                   self.colors[i], axis[i])
+        # Draw text
+        if not self.solution.steps:
+            return
+        pygame.font.init()
+        font = pygame.font.SysFont('Arial', 22)
+
+        def write(text, x, y):
+            text_surface = font.render(text, True, (255, 255, 255))
+            text_data = pygame.image.tostring(text_surface, 'RGBA', True)
+            glWindowPos2d(x, y)
+            glDrawPixels(text_surface.get_width(), text_surface.get_height(), GL_RGBA,
+                         GL_UNSIGNED_BYTE, text_data)
+            return text_surface.get_height()
+
+        y = 10
+        write(f"{self.solution.steps[-1].kind}{self.solution.steps[-1].variant} - {self.solution.steps[-1].alg}", 10, y)
+        for i in range(len(self.solution.steps) - 1, 0, -1):
+            y -= write(f"{self.solution.steps[i].alg} // {self.solution.steps[i].kind}{self.solution.steps[i].variant} - ", 10, y)
 
     def rotate(self, z_angle, y_angle=0):
         self.z_angle += z_angle
         self.y_angle += y_angle
-
 
     # def move_camera(self, dx, dy, dz):
     #     """Move the camera position"""
@@ -291,19 +324,19 @@ class CubeViz():
     def run(self):
         # Initialize pygame
         pygame.init()
-    
+
         clock = pygame.time.Clock()
         self.running = True
-    
+
         scramble = self.scramble.split(" ")
-    
+
         modes = ["", "eofb", "eorl", "eoud"]
-    
+
         while self.running:
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
                     running = False
-    
+
                 scramble_changed = False
                 if event.type == pygame.KEYDOWN:
                     if event.key == pygame.K_UP:
@@ -328,7 +361,7 @@ class CubeViz():
                     #     scramble_changed = True
                     # if event.key == pygame.K_m:
                     #     self.set_mode(modes[(modes.index(self.mode) + 1) % len(modes)])
-    
+
                 if scramble_changed:
                     self.set_cube(" ".join(scramble))
                 clock.tick(30)

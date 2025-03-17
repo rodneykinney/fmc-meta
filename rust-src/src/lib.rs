@@ -7,9 +7,9 @@ use pyo3::FromPyObject;
 // use pyo3::types::PyDict;
 
 use cubelib::algs::{Algorithm as LibAlgorithm};
-use cubelib::cube::Cube333;
+use cubelib::cube::{Cube333, Turn333};
 use cubelib::cube::turn::ApplyAlgorithm;
-use cubelib::solver::solution::{Solution as LibSolution, SolutionStep as LibSolutionStep};
+use cubelib::solver::solution::{ApplySolution, Solution as LibSolution, SolutionStep as LibSolutionStep};
 use cubelib::defs::{StepKind as LibStepKind, NissSwitchType};
 use cubelib::solver::df_search::CancelToken;
 use cubelib::steps::tables::PruningTables333;
@@ -89,6 +89,7 @@ impl StepConfig {
 }
 
 #[pyclass]
+#[derive(Clone)]
 struct SolutionStep(LibSolutionStep);
 
 #[pymethods]
@@ -105,8 +106,8 @@ impl SolutionStep {
         }))
     }
     #[getter]
-    fn kind(&self) -> StepKind {
-        StepKind(self.0.kind.clone())
+    fn kind(&self) -> String {
+        Into::<String>::into(self.0.kind.clone())
     }
     #[getter]
     fn variant(&self) -> String {
@@ -120,6 +121,30 @@ impl SolutionStep {
     fn comment(&self) -> String {
         self.0.comment.clone()
     }
+    fn append(&mut self, move_str: &str) -> PyResult<SolutionStep> {
+        let turn = Turn333::from_str(move_str).map_err(|_| PyValueError::new_err("Invalid move"))?;
+        self.0.alg.normal_moves.push(turn);
+        Ok(self.clone())
+    }
+    // fn is_ready(&self, cube: &Cube) -> PyResult<bool> {
+    //     Ok(true)
+        // let step_configs = vec![LibStepConfig {
+        //     kind: self.0.kind,
+        //     substeps: None,
+        //     min: Some(0),
+        //     max: Some(0),
+        //     absolute_min: Some(0),
+        //     absolute_max: Some(0),
+        //     niss: None,
+        //     step_limit: None,
+        //     quality: 0,
+        //     params: HashMap::new(),
+        // }];
+        // let mut tables = PruningTables333::new();
+        // solver::gen_tables(&step_configs, &mut tables);
+        // let (step, options) = &solver::build_steps(step_configs.clone(), &tables).map_err(|e| PyValueError::new_err(format!("Error building steps: {:?}", e)))?[0];
+        // Ok(step.is_cube_ready(cube.0.clone()))
+    //}
 }
 
 #[pyclass]
@@ -128,13 +153,24 @@ struct Solution(LibSolution);
 
 #[pymethods]
 impl Solution {
+    #[new]
+    fn new() -> Self {
+        Solution(LibSolution::new())
+    }
     #[getter]
     fn steps(&self) -> Vec<SolutionStep> {
         self.0.steps.iter().map(|step| SolutionStep(step.clone())).collect()
     }
+    #[setter]
+    fn set_steps(&mut self, steps: Vec<SolutionStep>) {
+        self.0.steps = steps.iter().map(|step| step.0.clone()).collect();
+    }
     #[getter]
     fn ends_on_normal(&self) -> bool {
         self.0.ends_on_normal
+    }
+    fn append(&mut self, step: SolutionStep) {
+        self.0.steps.push(step.0.clone());
     }
 
     fn __repr__(&self) -> String {
@@ -208,6 +244,11 @@ impl Cube {
         }
         Ok(corners)
     }
+
+    fn apply(&mut self, solution: &Solution) {
+        self.0.apply_solution(&solution.0);
+
+    }
 }
 
 #[pyfunction]
@@ -216,7 +257,6 @@ fn solve_step(cube: Cube, step_config: StepConfig, solutions: Vec<Solution>) -> 
     // let mut cube = Cube333::default();
     // cube.apply_alg(&alg);
 
-    let mut tables = PruningTables333::new();
     let step_configs = vec![step_config].into_iter().map(|s| {
         let niss = s.niss.as_ref().map(|n| {
             match n.as_str() {
@@ -240,6 +280,7 @@ fn solve_step(cube: Cube, step_config: StepConfig, solutions: Vec<Solution>) -> 
         }
     }).collect();
 
+    let mut tables = PruningTables333::new();
     solver::gen_tables(&step_configs, &mut tables);
     let (step, options) = &solver::build_steps(step_configs.clone(), &tables).map_err(|e| PyValueError::new_err(format!("Error building steps: {:?}", e)))?[0];
 
@@ -277,6 +318,7 @@ fn py_cubelib(_py: Python, m: &PyModule) -> PyResult<()> {
     m.add_class::<Solution>()?;
     m.add_class::<SolutionStep>()?;
     m.add_class::<StepConfig>()?;
+    m.add("foo", PyModule::new(_py, "StepKind")?)?;
 
     m.add_function(wrap_pyfunction!(solve_step, m)?)?;
     Ok(())

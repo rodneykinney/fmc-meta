@@ -56,8 +56,11 @@ class Attempt():
         return self
 
 if __name__ == "__main__":
-    attempt = Attempt("R U F")
-    attempt = attempt.find_eos(max_moves=3, absolute=False)
-    print(attempt.solutions[0:10])
-    attempt = attempt.find_drs()
-    print(attempt.solutions[:10])
+    s = py_cubelib.Solution()
+    s.append(py_cubelib.SolutionStep(kind="eo", variant="fB", alg="F", comment=""))
+    print(s)
+    # attempt = Attempt("R U F")
+    # attempt = attempt.find_eos(max_moves=3, absolute=False)
+    # print(attempt.solutions[0:10])
+    # attempt = attempt.find_drs()
+    # print(attempt.solutions[:10])

@@ -11,56 +11,75 @@ logging.basicConfig(
 )
 
 from cubelib.viz import CubeViz
+from py_cubelib import Solution, SolutionStep, Algorithm
 
 _mode = ""
 _scramble = ""
 _running = True
-_alg = []
-_step_algs = defaultdict(list)
+_solution = Solution()
+_all_solutions = []
 
 
-def scramble(str):
+def scramble(str = ""):
     global _scramble
     _scramble = str
-    viz.set_cube(str)
-    set_mode("")
-    viz.set_mode("")
+    viz.set_scramble(str)
+    _solution = Solution()
+    viz.set_solution(_solution)
 
+def check(i):
+    pass
 
 def reset():
-    _alg.clear()
-    viz.set_cube(_scramble)
+    global _solution
+    _solution = Solution()
+    viz.set_solution(_solution)
 
 def save():
-    _step_algs[_mode].append(" ".join(_alg))
-    reset()
+    global _solution
+    _all_solutions.append(_solution)
+    kind, variant = _solution.steps[-1].kind, _solution.steps[-1].variant
+    _solution = Solution()
+    set_mode(kind, variant)
 
 def list():
-    print(f"{_mode.upper()}:")
-    for i, alg in enumerate(_step_algs.get(_mode, [])):
-        print(f"{i+1}: {alg}")
+    solutions = [s for s in _all_solutions
+                 if s.steps and _solution.steps
+                 and s.steps[-1].kind == _solution.steps[-1].kind
+                 and s.steps[-1].variant == _solution.steps[-1].variant
+                 ]
+    if solutions:
+        print(f"{_solution.steps[-1].kind}{_solution.steps[-1].variant}")
+        for i, sol in enumerate(solutions):
+            print(f"{i+1}: {sol}")
 
 def append_move(move):
-    _alg.append(move)
-    viz.set_cube(f"{_scramble} {" ".join(_alg)}")
-
+    if _solution.steps:
+        _solution.steps = _solution.steps[:-1] + [SolutionStep(
+            kind = _solution.steps[-1].kind,
+            variant = _solution.steps[-1].variant,
+            alg = f"{_solution.steps[-1].alg} {move}",
+            comment = _solution.steps[-1].comment
+        )]
+        viz.set_solution(_solution)
 
 def eofb():
-    set_mode("eofb")
-
+    set_mode("eo", "fb")
 
 def eorl():
-    set_mode("eorl")
+    set_mode("eo", "rl")
 
 
 def eoud():
-    set_mode("eoud")
+    set_mode("eo", "ud")
+
+def drud():
+    set_mode("dr", "ud")
 
 
-def set_mode(str):
-    global _mode
-    _mode = str
-    viz.set_mode(_mode)
+def set_mode(step, variant):
+    _solution.append(SolutionStep(step, variant, "", ""))
+    viz.set_solution(_solution)
 
 
 def help():
@@ -93,7 +112,7 @@ def read_commands():
     cmd = ""
     while _running:
         try:
-            cmd = input(f"{_mode} - {' '.join(_alg)}> ")
+            cmd = input(f"{_mode}> ")
             if cmd.upper() in MOVES:
                 append_move(cmd.upper())
             else:
