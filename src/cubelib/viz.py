@@ -41,10 +41,10 @@ axis = ["xy"] * 9 \
 
 WHITE = (1, 1, 1)
 YELLOW = (1, 1, 0)
-GREEN = (0, .7, 0)
+GREEN = (0, .6, 0)
 BLUE = (0, 0, 1)
 RED = (1, 0, 0)
-ORANGE = (1, .4, .3)
+ORANGE = (1, .8, .1)
 GREY = (0.75, 0.75, 0.75)
 
 corner_piece_colors = [
@@ -126,6 +126,7 @@ class CubeViz():
         os.environ['SDL_VIDEO_WINDOW_POS'] = '0,0'
         pygame.display.set_mode((self.display_width, self.display_height), DOUBLEBUF | OPENGL)
         pygame.display.set_caption("")
+        pygame.font.init()
 
         # Set up the perspective
         glMatrixMode(GL_PROJECTION)
@@ -292,21 +293,29 @@ class CubeViz():
         # Draw text
         if not self.solution.steps:
             return
-        pygame.font.init()
         font = pygame.font.SysFont('Arial', 22)
 
         def write(text, x, y):
             text_surface = font.render(text, True, (255, 255, 255))
+            glColor4f(0.3, 0.3, 0.3, 1.0)
+            glRectf(x, y, x + text_surface.get_width(), y + text_surface.get_height())
             text_data = pygame.image.tostring(text_surface, 'RGBA', True)
             glWindowPos2d(x, y)
             glDrawPixels(text_surface.get_width(), text_surface.get_height(), GL_RGBA,
                          GL_UNSIGNED_BYTE, text_data)
             return text_surface.get_height()
 
+        write(self.scramble, 10, self.display_height - 30)
+
+        n = len(self.solution.steps)
         y = 10
-        write(f"{self.solution.steps[-1].kind}{self.solution.steps[-1].variant} - {self.solution.steps[-1].alg}", 10, y)
-        for i in range(len(self.solution.steps) - 1, 0, -1):
-            y -= write(f"{self.solution.steps[i].alg} // {self.solution.steps[i].kind}{self.solution.steps[i].variant} - ", 10, y)
+        y += write(
+            f"{self.solution.steps[n-1].kind}{self.solution.steps[n-1].variant} - {self.solution.steps[n-1].alg}",
+            10, y)
+        for i in range(2, n):
+            y += write(
+                f"{self.solution.steps[n-i].alg} // {self.solution.steps[n-i].kind}{self.solution.steps[n-i].variant}",
+                10, y)
 
     def rotate(self, z_angle, y_angle=0):
         self.z_angle += z_angle

@@ -3,6 +3,7 @@ import sys
 import traceback
 import logging
 from collections import defaultdict
+from builtins import (list as llist)
 
 logging.basicConfig(
     filename="fmc-meta.log", filemode="w",
@@ -14,57 +15,87 @@ from cubelib.viz import CubeViz
 from py_cubelib import Solution, SolutionStep, Algorithm
 
 _mode = ""
-_scramble = ""
 _running = True
-_solution = Solution()
-_all_solutions = []
+# Nested dict of (kind,variant) => list of (alg, dict) pairs
+_steps = defaultdict(llist)
+# Pointer to the steps leading up to the one being worked on
+_selector = []
+# Algorithm currently being built by the user
+_kind, _variant = "", ""
+_alg_steps = []
 
 
-def scramble(str = ""):
-    global _scramble
-    _scramble = str
+def build_solution() -> Solution:
+    sol = Solution()
+    next_step_options = _steps
+    for ((kind, variant), pos) in _selector:
+        if pos is not None:
+            alg, d = next_step_options[(kind, variant)][pos]
+            sol.append(SolutionStep(kind=kind, variant=variant, alg=alg, comment=""))
+            next_step_options = d
+    sol.append(
+        SolutionStep(kind=_kind, variant=_variant, alg=" ".join(_alg_steps), comment=""))
+    return sol
+
+
+def scramble(str=""):
     viz.set_scramble(str)
-    _solution = Solution()
-    viz.set_solution(_solution)
+    set_mode("", "")
+    reset()
+
 
 def check(i):
-    pass
+    _alg_steps.clear()
+    _selector.append(((_kind, _variant), i - 1))
+    set_mode("", "")
+
 
 def reset():
-    global _solution
-    _solution = Solution()
-    viz.set_solution(_solution)
+    _alg_steps.clear()
+    _kind, _variant = "",""
+    viz.set_solution(build_solution())
+
 
 def save():
-    global _solution
-    _all_solutions.append(_solution)
-    kind, variant = _solution.steps[-1].kind, _solution.steps[-1].variant
-    _solution = Solution()
-    set_mode(kind, variant)
+    next_step_options = _steps
+    for ((kind, variant), pos) in _selector:
+        _, next_step_options = next_step_options[(kind, variant)][pos]
+    next_step_options[(_kind, _variant)].append((" ".join(_alg_steps), defaultdict(llist)))
+    _alg_steps.clear()
+    viz.set_solution(build_solution())
+
 
 def list():
-    solutions = [s for s in _all_solutions
-                 if s.steps and _solution.steps
-                 and s.steps[-1].kind == _solution.steps[-1].kind
-                 and s.steps[-1].variant == _solution.steps[-1].variant
-                 ]
-    if solutions:
-        print(f"{_solution.steps[-1].kind}{_solution.steps[-1].variant}")
-        for i, sol in enumerate(solutions):
-            print(f"{i+1}: {sol}")
+    next_step_options = _steps
+    for ((kind, variant), pos) in _selector:
+        if pos is not None:
+            _, next_step_options = next_step_options[(kind, variant)][pos]
+    print(f"{_kind}{_variant}:")
+    for (i, (alg, _)) in enumerate(next_step_options[(_kind, _variant)]):
+        print(f"  {i + 1}: {alg}")
 
-def append_move(move):
-    if _solution.steps:
-        _solution.steps = _solution.steps[:-1] + [SolutionStep(
-            kind = _solution.steps[-1].kind,
-            variant = _solution.steps[-1].variant,
-            alg = f"{_solution.steps[-1].alg} {move}",
-            comment = _solution.steps[-1].comment
-        )]
-        viz.set_solution(_solution)
+
+def _append_move(move):
+    if _alg_steps and _alg_steps[-1][0] == move[0]:
+        suffixes = {_alg_steps[-1][1:], move[1:]}
+        if suffixes == {"", ""} or suffixes == {"'", "'"}:
+            _alg_steps[-1] = f"{move[0]}2"
+        elif suffixes == {"'", ""} or suffixes == {"2", "2"}:
+            _alg_steps.pop()
+        elif suffixes == {"", "2"}:
+            _alg_steps[-1] = f"{move[0][0]}'"
+        elif suffixes == {"'", "2"}:
+            _alg_steps[-1] = move[0][:1]
+        else:
+            raise ValueError(f"Could not combine {move} with {_alg_steps[-1]}")
+    else:
+        _alg_steps.append(move)
+    viz.set_solution(build_solution())
+
 
 def eofb():
     set_mode("eo", "fb")
+
 
 def eorl():
     set_mode("eo", "rl")
@@ -73,13 +104,16 @@ def eorl():
 def eoud():
     set_mode("eo", "ud")
 
+
 def drud():
     set_mode("dr", "ud")
 
 
 def set_mode(step, variant):
-    _solution.append(SolutionStep(step, variant, "", ""))
-    viz.set_solution(_solution)
+    _alg_steps.clear()
+    global _kind, _variant
+    _kind, _variant = step, variant
+    viz.set_solution(build_solution())
 
 
 def help():
@@ -112,9 +146,9 @@ def read_commands():
     cmd = ""
     while _running:
         try:
-            cmd = input(f"{_mode}> ")
+            cmd = input(f"{_mode}> ").strip()
             if cmd.upper() in MOVES:
-                append_move(cmd.upper())
+                _append_move(cmd.upper())
             else:
                 if cmd.find("(") < 0:
                     cmd = f"{cmd}()"
