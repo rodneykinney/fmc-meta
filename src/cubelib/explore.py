@@ -1,3 +1,5 @@
+from functools import cached_property
+from typing import Optional, Dict, List, Tuple
 import threading
 import sys
 import traceback
@@ -14,83 +16,95 @@ logging.basicConfig(
 from cubelib.viz import CubeViz
 from py_cubelib import Solution, SolutionStep, Algorithm
 
-_mode = ""
+
+class SolutionBuilder:
+    def __init__(self, kind: str, variant: str, previous: Optional["SolutionBuilder"] = None):
+        self.kind = kind
+        self.variant = variant
+        self.previous = previous
+        self.steps = []
+
+    def add_step(self, move: str):
+        if self.steps and self.steps[-1][0] == move[0]:
+            suffixes = {self.steps[-1][1:], move[1:]}
+            if suffixes == {"", ""} or suffixes == {"'", "'"}:
+                self.steps[-1] = f"{move[0]}2"
+            elif suffixes == {"'", ""} or suffixes == {"2", "2"}:
+                self.steps.pop()
+            elif suffixes == {"", "2"}:
+                self.steps[-1] = f"{move[0][0]}'"
+            elif suffixes == {"'", "2"}:
+                self.steps[-1] = move[0][:1]
+            else:
+                raise ValueError(f"Could not combine {move} with {self.steps[-1]}")
+        else:
+            self.steps.append(move)
+
+    def all_steps(self):
+        if self.previous is not None:
+            return self.previous.all_steps() + self.steps
+        return self.steps
+    
+    def build(self) -> Solution:
+        sol = Solution()
+        if self.previous is not None:
+            sol = self.previous.build()
+        sol.append(SolutionStep(kind=self.kind, variant=self.variant, alg=" ".join(self.steps), comment=""))
+        return sol
+
+
 _running = True
-# Nested dict of (kind,variant) => list of (alg, dict) pairs
-_steps = defaultdict(llist)
-# Pointer to the steps leading up to the one being worked on
-_selector = []
-# Algorithm currently being built by the user
-_kind, _variant = "", ""
-_alg_steps = []
-
-
-def build_solution() -> Solution:
-    sol = Solution()
-    next_step_options = _steps
-    for ((kind, variant), pos) in _selector:
-        if pos is not None:
-            alg, d = next_step_options[(kind, variant)][pos]
-            sol.append(SolutionStep(kind=kind, variant=variant, alg=alg, comment=""))
-            next_step_options = d
-    sol.append(
-        SolutionStep(kind=_kind, variant=_variant, alg=" ".join(_alg_steps), comment=""))
-    return sol
+# Nested dict of (kind,variant) => SolutionBuilder
+_steps: Dict[Tuple[str, str], List[SolutionBuilder]] = defaultdict(llist)
+# The algorithm currently being built
+_builder = SolutionBuilder("", "")
 
 
 def scramble(str=""):
+    global _builder
     viz.set_scramble(str)
-    set_mode("", "")
-    reset()
+    _builder = SolutionBuilder("", "")
+    viz.set_solution(_builder.build())
 
 
 def check(i):
-    _alg_steps.clear()
-    _selector.append(((_kind, _variant), i - 1))
-    set_mode("", "")
+    global _builder
+    b = _steps[(_builder.kind, _builder.variant)][i - 1]
+    _builder = SolutionBuilder(
+        kind="",
+        variant="",
+        previous = b  
+    )
+    viz.set_solution(_builder.build())
+
+def back():
+    if _builder.previous is not None:
+        global _builder
+        _builder = _builder.previous
+        viz.set_solution(_builder.build())
 
 
 def reset():
-    _alg_steps.clear()
-    _kind, _variant = "",""
-    viz.set_solution(build_solution())
+    _builder.steps.clear()
+    viz.set_solution(_builder.build())
 
 
 def save():
-    next_step_options = _steps
-    for ((kind, variant), pos) in _selector:
-        _, next_step_options = next_step_options[(kind, variant)][pos]
-    next_step_options[(_kind, _variant)].append((" ".join(_alg_steps), defaultdict(llist)))
-    _alg_steps.clear()
-    viz.set_solution(build_solution())
+    global _builder
+    _steps[(_builder.kind, _builder.variant)].append(_builder)
+    _builder = SolutionBuilder(_builder.kind, _builder.variant, previous = _builder.previous)
+    viz.set_solution(_builder.build())
 
 
 def list():
-    next_step_options = _steps
-    for ((kind, variant), pos) in _selector:
-        if pos is not None:
-            _, next_step_options = next_step_options[(kind, variant)][pos]
-    print(f"{_kind}{_variant}:")
-    for (i, (alg, _)) in enumerate(next_step_options[(_kind, _variant)]):
-        print(f"  {i + 1}: {alg}")
+    for (i, b) in enumerate(_steps[(_builder.kind, _builder.variant)]):
+        s = b.all_steps()
+        print(f"  {i + 1}: {' '.join(s)} ({len(s)})")
 
 
 def _append_move(move):
-    if _alg_steps and _alg_steps[-1][0] == move[0]:
-        suffixes = {_alg_steps[-1][1:], move[1:]}
-        if suffixes == {"", ""} or suffixes == {"'", "'"}:
-            _alg_steps[-1] = f"{move[0]}2"
-        elif suffixes == {"'", ""} or suffixes == {"2", "2"}:
-            _alg_steps.pop()
-        elif suffixes == {"", "2"}:
-            _alg_steps[-1] = f"{move[0][0]}'"
-        elif suffixes == {"'", "2"}:
-            _alg_steps[-1] = move[0][:1]
-        else:
-            raise ValueError(f"Could not combine {move} with {_alg_steps[-1]}")
-    else:
-        _alg_steps.append(move)
-    viz.set_solution(build_solution())
+    _builder.add_step(move)
+    viz.set_solution(_builder.build())
 
 
 def eofb():
@@ -107,13 +121,16 @@ def eoud():
 
 def drud():
     set_mode("dr", "ud")
+def drrl():
+    set_mode("dr", "rl")
+def drfb():
+    set_mode("dr", "fb")
 
 
 def set_mode(step, variant):
-    _alg_steps.clear()
-    global _kind, _variant
-    _kind, _variant = step, variant
-    viz.set_solution(build_solution())
+    global _builder
+    _builder = SolutionBuilder(step, variant, previous = _builder.previous)
+    viz.set_solution(_builder.build())
 
 
 def help():
@@ -146,7 +163,7 @@ def read_commands():
     cmd = ""
     while _running:
         try:
-            cmd = input(f"{_mode}> ").strip()
+            cmd = input(f"{_builder.kind}{_builder.variant}> ").strip()
             if cmd.upper() in MOVES:
                 _append_move(cmd.upper())
             else:

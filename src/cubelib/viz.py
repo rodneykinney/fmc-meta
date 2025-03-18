@@ -149,11 +149,6 @@ class CubeViz():
         self.scramble = scramble
         self.set_solution(Solution())
 
-    def set_cube(self, setup: str):
-        logging.debug(f"Setting cube to {setup}")
-        self.cube = Cube(setup)
-        self.set_colors()
-
     def set_solution(self, solution: Solution):
         self.cube = Cube(self.scramble)
         self.solution = solution
@@ -269,16 +264,24 @@ class CubeViz():
                   0, 0, 0,  # Look at point
                   0, 1, 0)  # Up vector
 
+        glRotatef(self.y_angle, 0, 1, 0)
         glRotatef(self.z_angle, 0, 0, 1)
-        # glRotatef(self.y_angle, 0, 1, 0)
 
-        """Order faces from back to front"""
-
+        # Order faces from back to front
         def distance(i):
-            c, s = math.cos(self.z_angle * math.pi / 180), math.sin(self.z_angle * math.pi / 180)
-            return ((facelet_x[i] * c - facelet_y[i] * s) - self.camera_x) ** 2 + \
-                ((facelet_x[i] * s + facelet_y[i] * c) - self.camera_y) ** 2 + \
-                (facelet_z[i] - self.camera_z) ** 2
+            c = math.cos(self.z_angle * math.pi / 180)
+            s = math.sin(self.z_angle * math.pi / 180)
+            xp = (facelet_x[i] * c - facelet_y[i] * s)
+            yp = (facelet_x[i] * s + facelet_y[i] * c)
+            zp = 0
+            c = math.cos(self.y_angle * math.pi / 180)
+            s = math.sin(self.y_angle * math.pi / 180)
+            xpp = (-xp * c - zp * s)
+            ypp = yp
+            zpp = (-xp * s + zp * c)
+            return (xpp - self.camera_x) ** 2 + \
+                (ypp - self.camera_y) ** 2 + \
+                (zpp - self.camera_z) ** 2
 
         faces = [
             (range(9 * i, 9 * (i + 1)), distance(9 * i + 4)) for i in range(0, 6)
@@ -312,7 +315,7 @@ class CubeViz():
         y += write(
             f"{self.solution.steps[n-1].kind}{self.solution.steps[n-1].variant} - {self.solution.steps[n-1].alg}",
             10, y)
-        for i in range(2, n):
+        for i in range(2, n+1):
             y += write(
                 f"{self.solution.steps[n-i].alg} // {self.solution.steps[n-i].kind}{self.solution.steps[n-i].variant}",
                 10, y)
@@ -337,51 +340,24 @@ class CubeViz():
         clock = pygame.time.Clock()
         self.running = True
 
-        scramble = self.scramble.split(" ")
-
-        modes = ["", "eofb", "eorl", "eoud"]
-
         while self.running:
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
                     running = False
 
-                scramble_changed = False
                 if event.type == pygame.KEYDOWN:
                     if event.key == pygame.K_UP:
-                        # self.move_camera(0, 0, 2)
                         self.rotate(0, 10)
                     if event.key == pygame.K_DOWN:
-                        # self.move_camera(0, 0, -2)
                         self.rotate(0, -10)
                     if event.key == pygame.K_LEFT:
                         self.rotate(-10, 0)
                     if event.key == pygame.K_RIGHT:
                         self.rotate(10, 0)
-                    # if event.key in {pygame.K_r, pygame.K_u, pygame.K_f, pygame.K_l, pygame.K_b,
-                    #                  pygame.K_d}:
-                    #     scramble.append(pygame.key.name(event.key))
-                    #     scramble_changed = True
-                    # if event.key == pygame.K_QUOTE and scramble:
-                    #     scramble[-1] = f"{scramble[-1]}'".replace("''", "").replace("2'", "2")
-                    #     scramble_changed = True
-                    # if event.key == pygame.K_2 and scramble:
-                    #     scramble[-1] = f"{scramble[-1]}2".replace("22", "").replace("'2", "2")
-                    #     scramble_changed = True
-                    # if event.key == pygame.K_m:
-                    #     self.set_mode(modes[(modes.index(self.mode) + 1) % len(modes)])
 
-                if scramble_changed:
-                    self.set_cube(" ".join(scramble))
                 clock.tick(30)
 
             self.draw()
             # Update the display
             pygame.display.flip()
         pygame.quit()
-
-
-if __name__ == "__main__":
-    viz = CubeViz()
-    viz.set_cube(sys.argv[1])
-    viz.run()
