@@ -77,9 +77,12 @@ def check(i):
     )
     viz.set_solution(_builder.build())
 
+def is_solved(kind, variant):
+    print(f"{kind}{variant}? {viz.cube.is_step_solved(kind, variant)}")
+
 def back():
+    global _builder
     if _builder.previous is not None:
-        global _builder
         _builder = _builder.previous
         viz.set_solution(_builder.build())
 

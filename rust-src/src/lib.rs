@@ -1,20 +1,37 @@
 use pyo3::prelude::*;
-use std::str::FromStr;
 use std::collections::HashMap;
+use std::str::FromStr;
 
 use pyo3::exceptions::PyValueError;
 use pyo3::FromPyObject;
 // use pyo3::types::PyDict;
 
-use cubelib::algs::{Algorithm as LibAlgorithm};
-use cubelib::cube::{Cube333, Turn333};
-use cubelib::cube::turn::ApplyAlgorithm;
-use cubelib::solver::solution::{ApplySolution, Solution as LibSolution, SolutionStep as LibSolutionStep};
-use cubelib::defs::{StepKind as LibStepKind, NissSwitchType};
+use cubelib::algs::Algorithm as LibAlgorithm;
+use cubelib::cube::turn::{ApplyAlgorithm, TransformableMut};
+use cubelib::cube::{Corner, Cube333, Transformation333, Turn333};
+use cubelib::defs::{NissSwitchType, StepKind as LibStepKind};
 use cubelib::solver::df_search::CancelToken;
+use cubelib::solver::solution::{
+    ApplySolution, Solution as LibSolution, SolutionStep as LibSolutionStep,
+};
+use cubelib::steps::solver;
+use cubelib::steps::step::{next_step, StepConfig as LibStepConfig};
 use cubelib::steps::tables::PruningTables333;
-use cubelib::steps::step::{StepConfig as LibStepConfig, next_step};
-use cubelib::steps::{solver};
+
+use cubelib::steps::coord::Coord;
+use cubelib::steps::dr::coords::DRUDEOFBCoord;
+use cubelib::steps::eo::coords::BadEdgeCount;
+
+#[pyclass]
+struct CubeChecker {}
+
+#[pymethods]
+impl CubeChecker {
+    #[new]
+    fn new() -> PyResult<Self> {
+        Ok(CubeChecker {})
+    }
+}
 
 #[pyclass]
 #[derive(FromPyObject)]
@@ -33,8 +50,19 @@ struct StepConfig {
 #[pymethods]
 impl StepConfig {
     #[new]
-    fn new(kind: String, niss: Option<String>, params: Option<HashMap<String, String>>, substeps: Option<Vec<String>>, min: Option<u8>, max: Option<u8>, absolute_min: Option<u8>, absolute_max: Option<u8>, step_limit: Option<usize>) -> PyResult<Self> {
-        let _s = LibStepKind::from_str(&kind).map_err(|_| PyValueError::new_err("Invalid step kind"))?;
+    fn new(
+        kind: String,
+        niss: Option<String>,
+        params: Option<HashMap<String, String>>,
+        substeps: Option<Vec<String>>,
+        min: Option<u8>,
+        max: Option<u8>,
+        absolute_min: Option<u8>,
+        absolute_max: Option<u8>,
+        step_limit: Option<usize>,
+    ) -> PyResult<Self> {
+        let _s =
+            LibStepKind::from_str(&kind).map_err(|_| PyValueError::new_err("Invalid step kind"))?;
         Ok(StepConfig {
             kind: kind,
             substeps: substeps,
@@ -96,8 +124,10 @@ struct SolutionStep(LibSolutionStep);
 impl SolutionStep {
     #[new]
     fn new(kind: String, variant: String, alg: String, comment: String) -> PyResult<Self> {
-        let kind = LibStepKind::from_str(&kind).map_err(|_| PyValueError::new_err("Invalid step kind"))?;
-        let alg = LibAlgorithm::from_str(&alg).map_err(|_| PyValueError::new_err("Invalid algorithm"))?;
+        let kind =
+            LibStepKind::from_str(&kind).map_err(|_| PyValueError::new_err("Invalid step kind"))?;
+        let alg =
+            LibAlgorithm::from_str(&alg).map_err(|_| PyValueError::new_err("Invalid algorithm"))?;
         Ok(SolutionStep(LibSolutionStep {
             kind,
             variant,
@@ -122,28 +152,29 @@ impl SolutionStep {
         self.0.comment.clone()
     }
     fn append(&mut self, move_str: &str) -> PyResult<SolutionStep> {
-        let turn = Turn333::from_str(move_str).map_err(|_| PyValueError::new_err("Invalid move"))?;
+        let turn =
+            Turn333::from_str(move_str).map_err(|_| PyValueError::new_err("Invalid move"))?;
         self.0.alg.normal_moves.push(turn);
         Ok(self.clone())
     }
     // fn is_ready(&self, cube: &Cube) -> PyResult<bool> {
     //     Ok(true)
-        // let step_configs = vec![LibStepConfig {
-        //     kind: self.0.kind,
-        //     substeps: None,
-        //     min: Some(0),
-        //     max: Some(0),
-        //     absolute_min: Some(0),
-        //     absolute_max: Some(0),
-        //     niss: None,
-        //     step_limit: None,
-        //     quality: 0,
-        //     params: HashMap::new(),
-        // }];
-        // let mut tables = PruningTables333::new();
-        // solver::gen_tables(&step_configs, &mut tables);
-        // let (step, options) = &solver::build_steps(step_configs.clone(), &tables).map_err(|e| PyValueError::new_err(format!("Error building steps: {:?}", e)))?[0];
-        // Ok(step.is_cube_ready(cube.0.clone()))
+    // let step_configs = vec![LibStepConfig {
+    //     kind: self.0.kind,
+    //     substeps: None,
+    //     min: Some(0),
+    //     max: Some(0),
+    //     absolute_min: Some(0),
+    //     absolute_max: Some(0),
+    //     niss: None,
+    //     step_limit: None,
+    //     quality: 0,
+    //     params: HashMap::new(),
+    // }];
+    // let mut tables = PruningTables333::new();
+    // solver::gen_tables(&step_configs, &mut tables);
+    // let (step, options) = &solver::build_steps(step_configs.clone(), &tables).map_err(|e| PyValueError::new_err(format!("Error building steps: {:?}", e)))?[0];
+    // Ok(step.is_cube_ready(cube.0.clone()))
     //}
 }
 
@@ -159,7 +190,11 @@ impl Solution {
     }
     #[getter]
     fn steps(&self) -> Vec<SolutionStep> {
-        self.0.steps.iter().map(|step| SolutionStep(step.clone())).collect()
+        self.0
+            .steps
+            .iter()
+            .map(|step| SolutionStep(step.clone()))
+            .collect()
     }
     #[setter]
     fn set_steps(&mut self, steps: Vec<SolutionStep>) {
@@ -195,7 +230,8 @@ struct Algorithm(LibAlgorithm);
 impl Algorithm {
     #[new]
     fn new(s: &str) -> PyResult<Self> {
-        let alg = LibAlgorithm::from_str(s).map_err(|_| PyValueError::new_err("Invalid algorithm"))?;
+        let alg =
+            LibAlgorithm::from_str(s).map_err(|_| PyValueError::new_err("Invalid algorithm"))?;
         Ok(Algorithm(alg))
     }
 
@@ -212,7 +248,8 @@ struct Cube(Cube333);
 impl Cube {
     #[new]
     fn new(scramble: String) -> PyResult<Self> {
-        let alg = LibAlgorithm::from_str(&scramble).map_err(|_| PyValueError::new_err("Invalid scramble"))?;
+        let alg = LibAlgorithm::from_str(&scramble)
+            .map_err(|_| PyValueError::new_err("Invalid scramble"))?;
         let mut cube = Cube333::default();
         cube.apply_alg(&alg);
         Ok(Cube(cube))
@@ -247,48 +284,122 @@ impl Cube {
 
     fn apply(&mut self, solution: &Solution) {
         self.0.apply_solution(&solution.0);
-
     }
+
+    fn case_name_for_step(&self, step: &str, variant: &str) -> PyResult<String> {
+        match step {
+            "eo" => match variant {
+                "fb" => Ok(format!("{}e", self.0.count_bad_edges_fb())),
+                "rl" => Ok(format!("{}e", self.0.count_bad_edges_lr())),
+                "ud" => Ok(format!("{}e", self.0.count_bad_edges_ud())),
+                _ => Ok("".to_string()),
+            },
+            "dr" => match variant {
+                "fb" => Ok("DRFB".to_string()),
+                "rl" => Ok("DRRL".to_string()),
+                "ud" => {
+                    let bad_corner_count = self.0.corners.get_corners().into_iter().filter(|c: &Corner| c.orientation != 0).count();
+                    let bad_edge_count = self.0.count_bad_edges_lr() + self.0.count_bad_edges_fb();
+                    Ok(format!("{}c{}e", bad_corner_count, bad_edge_count))
+                }
+                _ => Ok("".to_string()),
+            },
+            _ => Ok("".to_string()),
+        }
+    }
+
+    fn is_step_solved(&self, step: &str, variant: &str) -> PyResult<bool> {
+        match step {
+            "eo" => match variant {
+                "fb" => Ok(self.0.count_bad_edges_fb() == 0),
+                "rl" => Ok(self.0.count_bad_edges_lr() == 0),
+                "ud" => Ok(self.0.count_bad_edges_ud() == 0),
+                //"" => Ok(self.0.count_bad_edges_fb() == 0 || self.0.count_bad_edges_lr() == 0 || self.0.count_bad_edges_ud() == 0),
+                "" => Ok(self.is_step_solved(step, "fb").unwrap()
+                    || self.is_step_solved(step, "rl").unwrap()
+                    || self.is_step_solved(step, "ud").unwrap()),
+                _ => Err(PyValueError::new_err(format!(
+                    "Invalid EO variant '{}'",
+                    variant
+                ))),
+            },
+            "dr" => match variant {
+                "fb" => {
+                    let mut cube = self.0.clone();
+                    cube.transform(Transformation333::X);
+                    let solved = cube.count_bad_edges_fb() == 0
+                        && cube.count_bad_edges_lr() == 0
+                        && DRUDEOFBCoord::from(&cube).val() == 0;
+                    Ok(solved)
+                },
+                "rl" => {
+                    let mut cube = self.0.clone();
+                    cube.transform(Transformation333::Z);
+                    let solved = cube.count_bad_edges_fb() == 0
+                        && cube.count_bad_edges_lr() == 0
+                        && DRUDEOFBCoord::from(&cube).val() == 0;
+                    Ok(solved)
+                },
+                "ud" => {
+                    let solved = self.0.count_bad_edges_fb() == 0
+                        && self.0.count_bad_edges_lr() == 0
+                        && DRUDEOFBCoord::from(&self.0).val() == 0;
+                    Ok(solved)
+                },
+                _ => Err(PyValueError::new_err(format!(
+                    "Invalid DR variant '{}'",
+                    variant
+                ))),
+            },
+            _ => Err(PyValueError::new_err(format!("Invalid step '{}'", step))),
+        }
+    }
+
 }
 
 #[pyfunction]
-fn solve_step(cube: Cube, step_config: StepConfig, solutions: Vec<Solution>) -> PyResult<Vec<Solution>> {
+fn solve_step(
+    cube: Cube,
+    step_config: StepConfig,
+    solutions: Vec<Solution>,
+) -> PyResult<Vec<Solution>> {
     // let alg = LibAlgorithm::from_str(&scramble).map_err(|_| PyValueError::new_err("Invalid scramble"))?;
     // let mut cube = Cube333::default();
     // cube.apply_alg(&alg);
 
-    let step_configs = vec![step_config].into_iter().map(|s| {
-        let niss = s.niss.as_ref().map(|n| {
-            match n.as_str() {
+    let step_configs = vec![step_config]
+        .into_iter()
+        .map(|s| {
+            let niss = s.niss.as_ref().map(|n| match n.as_str() {
                 "never" => NissSwitchType::Never,
                 "always" => NissSwitchType::Always,
                 "before" => NissSwitchType::Before,
                 _ => NissSwitchType::Never,
+            });
+            LibStepConfig {
+                kind: LibStepKind::from_str(&s.kind).unwrap(),
+                substeps: s.substeps,
+                min: s.min,
+                max: s.max,
+                absolute_min: s.absolute_min,
+                absolute_max: s.absolute_max,
+                niss: niss,
+                step_limit: s.step_limit,
+                quality: 0,
+                params: s.params.unwrap_or_default(),
             }
-        });
-        LibStepConfig {
-            kind: LibStepKind::from_str(&s.kind).unwrap(),
-            substeps: s.substeps,
-            min: s.min,
-            max: s.max,
-            absolute_min: s.absolute_min,
-            absolute_max: s.absolute_max,
-            niss: niss,
-            step_limit: s.step_limit,
-            quality: 0,
-            params: s.params.unwrap_or_default(),
-        }
-    }).collect();
+        })
+        .collect();
 
     let mut tables = PruningTables333::new();
     solver::gen_tables(&step_configs, &mut tables);
-    let (step, options) = &solver::build_steps(step_configs.clone(), &tables).map_err(|e| PyValueError::new_err(format!("Error building steps: {:?}", e)))?[0];
+    let (step, options) = &solver::build_steps(step_configs.clone(), &tables)
+        .map_err(|e| PyValueError::new_err(format!("Error building steps: {:?}", e)))?[0];
 
     let cancel_token = CancelToken::default();
     let solutions = if solutions.is_empty() {
         vec![Solution(LibSolution::new())]
-    }
-    else {
+    } else {
         solutions
     };
     // let solutions = cubelib::solver::solve_steps(cube.0, &steps, &CancelToken::default());
@@ -302,12 +413,13 @@ fn solve_step(cube: Cube, step_config: StepConfig, solutions: Vec<Solution>) -> 
                 options.clone(),
                 cube.0.clone(),
                 &cancel_token,
-            ).map(|s| Solution(s)).collect::<Vec<_>>()
+            )
+            .map(|s| Solution(s))
+            .collect::<Vec<_>>()
         })
         .collect::<Vec<_>>();
     Ok(solutions)
 }
-
 
 // The Python module definition
 #[pymodule]

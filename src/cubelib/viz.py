@@ -298,17 +298,19 @@ class CubeViz():
             return
         font = pygame.font.SysFont('Arial', 22)
 
-        def write(text, x, y):
+        def write(text, x, y, top_justify=False, right_justify=False):
             text_surface = font.render(text, True, (255, 255, 255))
             glColor4f(0.3, 0.3, 0.3, 1.0)
             glRectf(x, y, x + text_surface.get_width(), y + text_surface.get_height())
             text_data = pygame.image.tostring(text_surface, 'RGBA', True)
-            glWindowPos2d(x, y)
+            glWindowPos2d(
+                x if not right_justify else x - text_surface.get_width(),
+                y if not top_justify else y - text_surface.get_height())
             glDrawPixels(text_surface.get_width(), text_surface.get_height(), GL_RGBA,
                          GL_UNSIGNED_BYTE, text_data)
             return text_surface.get_height()
 
-        write(self.scramble, 10, self.display_height - 30)
+        write(self.scramble, 10, self.display_height, top_justify=True)
 
         n = len(self.solution.steps)
         y = 10
@@ -319,6 +321,12 @@ class CubeViz():
             y += write(
                 f"{self.solution.steps[n-i].alg} // {self.solution.steps[n-i].kind}{self.solution.steps[n-i].variant}",
                 10, y)
+
+        if self.solution.steps:
+            write(
+                self.cube.case_name_for_step(self.solution.steps[-1].kind, self.solution.steps[-1].variant),
+                self.display_width-10,10, right_justify=True
+            )
 
     def rotate(self, z_angle, y_angle=0):
         self.z_angle += z_angle
