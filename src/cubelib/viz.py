@@ -172,6 +172,12 @@ class CubeViz():
         elif mode == "drud":
             self.should_draw_edge = lambda pos, piece, o, f: o & 3 > 0
             self.should_draw_corner = lambda pos, piece, o, f: o != 0 and o == f
+        elif mode == "drfb":
+            self.should_draw_edge = lambda pos, piece, o, f: o & 5 > 0
+            self.should_draw_corner = lambda pos, piece, o, f: o != (2 - (piece % 2) if (piece + pos) % 2 else 0) and f == (o + 2 - (piece % 2)) % 3
+        elif mode == "drrl":
+            self.should_draw_edge = lambda pos, piece, o, f: o & 6 > 0
+            self.should_draw_corner = lambda pos, piece, o, f: o != (1 + (piece % 2) if (piece + pos) % 2 else 0) and f == (o + 1 + (piece % 2)) % 3
         else:
             self.should_draw_edge = self.do_draw
             self.should_draw_corner = self.do_draw
@@ -315,17 +321,18 @@ class CubeViz():
         n = len(self.solution.steps)
         y = 10
         y += write(
-            f"{self.solution.steps[n-1].kind}{self.solution.steps[n-1].variant} - {self.solution.steps[n-1].alg}",
+            f"{self.solution.steps[n - 1].kind}{self.solution.steps[n - 1].variant} - {self.solution.steps[n - 1].alg}",
             10, y)
-        for i in range(2, n+1):
+        for i in range(2, n + 1):
             y += write(
-                f"{self.solution.steps[n-i].alg} // {self.solution.steps[n-i].kind}{self.solution.steps[n-i].variant}",
+                f"{self.solution.steps[n - i].alg} // {self.solution.steps[n - i].kind}{self.solution.steps[n - i].variant}",
                 10, y)
 
         if self.solution.steps:
             write(
-                self.cube.case_name_for_step(self.solution.steps[-1].kind, self.solution.steps[-1].variant),
-                self.display_width-10,10, right_justify=True
+                self.cube.case_name_for_step(self.solution.steps[-1].kind,
+                                             self.solution.steps[-1].variant),
+                self.display_width - 10, 10, right_justify=True
             )
 
     def rotate(self, z_angle, y_angle=0):
@@ -347,11 +354,33 @@ class CubeViz():
 
         clock = pygame.time.Clock()
         self.running = True
+        dragging = False
+        last_mouse_pos = None
+
 
         while self.running:
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
                     running = False
+
+                if event.type == pygame.MOUSEBUTTONDOWN:
+                    if event.button == 1:  # Left mouse button
+                        dragging = True
+                        last_mouse_pos = pygame.mouse.get_pos()
+
+                if event.type == pygame.MOUSEBUTTONUP:
+                    if event.button == 1:  # Left mouse button
+                        dragging = False
+
+                if event.type == pygame.MOUSEMOTION:
+                    if dragging:
+                        current_mouse_pos = pygame.mouse.get_pos()
+                        dx = current_mouse_pos[0] - last_mouse_pos[0]
+                        dy = current_mouse_pos[1] - last_mouse_pos[1]
+                        self.rotate(dx, dy)
+                        last_mouse_pos = current_mouse_pos
+
+
 
                 if event.type == pygame.KEYDOWN:
                     if event.key == pygame.K_UP:

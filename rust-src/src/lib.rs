@@ -295,8 +295,16 @@ impl Cube {
                 _ => Ok("".to_string()),
             },
             "dr" => match variant {
-                "fb" => Ok("DRFB".to_string()),
-                "rl" => Ok("DRRL".to_string()),
+                "fb" => {
+                    let mut cube = self.0.clone();
+                    cube.transform(Transformation333::X);
+                    Cube(cube).case_name_for_step("dr", "ud")
+                },
+                "rl" => {
+                    let mut cube = self.0.clone();
+                    cube.transform(Transformation333::Z);
+                    Cube(cube).case_name_for_step("dr", "ud")
+                },
                 "ud" => {
                     let bad_corner_count = self.0.corners.get_corners().into_iter().filter(|c: &Corner| c.orientation != 0).count();
                     let bad_edge_count = self.0.count_bad_edges_lr() + self.0.count_bad_edges_fb();

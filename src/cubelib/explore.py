@@ -16,6 +16,15 @@ logging.basicConfig(
 from cubelib.viz import CubeViz
 from py_cubelib import Solution, SolutionStep, Algorithm
 
+FORBIDDEN_MOVES_AFTER = {
+    ("eo", "fb"): "F'B'",
+    ("eo", "rl"): "R'L'",
+    ("eo", "ud"): "U'D'",
+    ("dr", "fb"): "U'D'R'L'",
+    ("dr", "rl"): "F'B'U'D'",
+    ("dr", "ud"): "F'B'R'L'",
+}
+
 
 class SolutionBuilder:
     def __init__(self, kind: str, variant: str, previous: Optional["SolutionBuilder"] = None):
@@ -40,16 +49,22 @@ class SolutionBuilder:
         else:
             self.steps.append(move)
 
+    def allows_move(self, move: str) -> bool:
+        if self.previous is None:
+            return True
+        return move not in FORBIDDEN_MOVES_AFTER[(self.previous.kind, self.previous.variant)]
+
     def all_steps(self):
         if self.previous is not None:
             return self.previous.all_steps() + self.steps
         return self.steps
-    
+
     def build(self) -> Solution:
         sol = Solution()
         if self.previous is not None:
             sol = self.previous.build()
-        sol.append(SolutionStep(kind=self.kind, variant=self.variant, alg=" ".join(self.steps), comment=""))
+        sol.append(SolutionStep(kind=self.kind, variant=self.variant, alg=" ".join(self.steps),
+                                comment=""))
         return sol
 
 
@@ -73,12 +88,14 @@ def check(i):
     _builder = SolutionBuilder(
         kind="",
         variant="",
-        previous = b  
+        previous=b
     )
     viz.set_solution(_builder.build())
 
+
 def is_solved(kind, variant):
     print(f"{kind}{variant}? {viz.cube.is_step_solved(kind, variant)}")
+
 
 def back():
     global _builder
@@ -88,15 +105,19 @@ def back():
 
 
 def reset():
-    _builder.steps.clear()
+    global _builder
+    _builder = SolutionBuilder(_builder.kind, _builder.variant, previous=_builder.previous)
     viz.set_solution(_builder.build())
 
 
 def save():
     global _builder
-    _steps[(_builder.kind, _builder.variant)].append(_builder)
-    _builder = SolutionBuilder(_builder.kind, _builder.variant, previous = _builder.previous)
-    viz.set_solution(_builder.build())
+    if viz.cube.is_step_solved(_builder.kind, _builder.variant):
+        _steps[(_builder.kind, _builder.variant)].append(_builder)
+        _builder = SolutionBuilder(_builder.kind, _builder.variant, previous=_builder.previous)
+        viz.set_solution(_builder.build())
+    else:
+        print(f"Cube is not in {_builder.kind}{_builder.variant}")
 
 
 def list():
@@ -106,8 +127,11 @@ def list():
 
 
 def _append_move(move):
-    _builder.add_step(move)
-    viz.set_solution(_builder.build())
+    if _builder.allows_move(move):
+        _builder.add_step(move)
+        viz.set_solution(_builder.build())
+    else:
+        print(f"{move} not allowed after {_builder.previous.kind}{_builder.previous.variant}")
 
 
 def eofb():
@@ -124,15 +148,19 @@ def eoud():
 
 def drud():
     set_mode("dr", "ud")
+
+
 def drrl():
     set_mode("dr", "rl")
+
+
 def drfb():
     set_mode("dr", "fb")
 
 
 def set_mode(step, variant):
     global _builder
-    _builder = SolutionBuilder(step, variant, previous = _builder.previous)
+    _builder = SolutionBuilder(step, variant, previous=_builder.previous)
     viz.set_solution(_builder.build())
 
 
@@ -169,6 +197,9 @@ def read_commands():
             cmd = input(f"{_builder.kind}{_builder.variant}> ").strip()
             if cmd.upper() in MOVES:
                 _append_move(cmd.upper())
+            elif len([m for m in cmd.split(" ") if m.upper() not in MOVES]) == 0:
+                for m in cmd.split(" "):
+                    _append_move(m.upper())
             else:
                 if cmd.find("(") < 0:
                     cmd = f"{cmd}()"
@@ -183,4 +214,11 @@ viz = CubeViz()
 
 if __name__ == "__main__":
     threading.Thread(target=read_commands).start()
+    scramble("L D L U2 F2 D F' B2 D R F2 R D2 R2 F2 L' F2 R' U2 D2")
+    eorl()
+    for m in "R F L U L".split():
+        _append_move(m)
+    save()
+    check(1)
+    drfb()
     viz.run()
