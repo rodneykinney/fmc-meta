@@ -303,6 +303,17 @@ impl Cube {
             .map_err(|s| PyValueError::new_err(s))?
             .is_eligible(&self.0))
     }
+
+    fn should_draw_edge(&self, step: &str, variant: &str, pos: usize, facelet: u8) -> PyResult<bool> {
+        Ok(StepBuilder::from_kind(step, variant)
+            .map_err(|s| PyValueError::new_err(s))?
+            .should_draw_edge(&self.0, pos, facelet))
+    }
+    fn should_draw_corner(&self, step: &str, variant: &str, pos: usize, facelet: u8) -> PyResult<bool> {
+        Ok(StepBuilder::from_kind(step, variant)
+            .map_err(|s| PyValueError::new_err(s))?
+            .should_draw_corner(&self.0, pos, facelet))
+    }
 }
 
 #[pyfunction]
@@ -388,6 +399,8 @@ trait Solvable {
     fn is_solved(&self, cube: &Cube333) -> bool;
     fn is_eligible(&self, cube: &Cube333) -> bool;
     fn case_name(&self, cube: &Cube333) -> String;
+    fn should_draw_edge(&self, _cube: &Cube333, pos: usize, facelet: u8) -> bool;
+    fn should_draw_corner(&self, _cube: &Cube333, pos: usize, facelet: u8) -> bool;
 }
 struct StepBuilder;
 impl StepBuilder {
@@ -422,6 +435,12 @@ impl Solvable for SCRAMBLED {
     fn case_name(&self, _cube: &Cube333) -> String {
         "".to_string()
     }
+    fn should_draw_edge(&self, _cube: &Cube333, _pos: usize, _facelet: u8) -> bool {
+        true
+    }
+    fn should_draw_corner(&self, _cube: &Cube333, _pos: usize, _facelet: u8) -> bool {
+        true
+    }
 }
 
 pub struct EOFB;
@@ -438,6 +457,12 @@ impl Solvable for EOFB {
     fn case_name(&self, cube: &Cube333) -> String {
         format!("{}e", cube.count_bad_edges_fb())
     }
+    fn should_draw_edge(&self, cube: &Cube333, pos: usize, _facelet: u8) -> bool {
+        !cube.edges.get_edges()[pos].oriented_fb
+    }
+    fn should_draw_corner(&self, _cube: &Cube333, _pos: usize, _facelet: u8) -> bool {
+        false
+    }
 }
 impl Solvable for EORL {
     fn is_eligible(&self, _cube: &Cube333) -> bool {
@@ -450,6 +475,12 @@ impl Solvable for EORL {
     fn case_name(&self, cube: &Cube333) -> String {
         format!("{}e", cube.count_bad_edges_lr())
     }
+    fn should_draw_edge(&self, cube: &Cube333, pos: usize, _facelet: u8) -> bool {
+        !cube.edges.get_edges()[pos].oriented_rl
+    }
+    fn should_draw_corner(&self, _cube: &Cube333, _pos: usize, _facelet: u8) -> bool {
+        false
+    }
 }
 impl Solvable for EOUD {
     fn is_eligible(&self, _cube: &Cube333) -> bool {
@@ -461,6 +492,12 @@ impl Solvable for EOUD {
     }
     fn case_name(&self, cube: &Cube333) -> String {
         format!("{}e", cube.count_bad_edges_ud())
+    }
+    fn should_draw_edge(&self, cube: &Cube333, pos: usize, _facelet: u8) -> bool {
+        !cube.edges.get_edges()[pos].oriented_ud
+    }
+    fn should_draw_corner(&self, _cube: &Cube333, _pos: usize, _facelet: u8) -> bool {
+        false
     }
 }
 pub struct DRUD;
@@ -488,6 +525,14 @@ impl Solvable for DRUD {
         let bad_edge_count = cube.count_bad_edges_lr() + cube.count_bad_edges_fb();
         format!("{}c{}e", bad_corner_count, bad_edge_count)
     }
+    fn should_draw_edge(&self, cube: &Cube333, pos: usize, _facelet: u8) -> bool {
+        let e = cube.edges.get_edges()[pos];
+        !e.oriented_fb || !e.oriented_rl
+    }
+    fn should_draw_corner(&self, cube: &Cube333, pos: usize, facelet: u8) -> bool {
+        let c = cube.corners.get_corners()[pos];
+        c.orientation != 0 && c.orientation == facelet
+    }
 }
 impl Solvable for DRFB {
     fn is_eligible(&self, cube: &Cube333) -> bool {
@@ -503,6 +548,23 @@ impl Solvable for DRFB {
         cube.transform(Transformation333::X);
         DRUD.case_name(&cube)
     }
+    fn should_draw_edge(&self, cube: &Cube333, pos: usize, _facelet: u8) -> bool {
+        let e = cube.edges.get_edges()[pos];
+        !e.oriented_ud || !e.oriented_rl
+    }
+    fn should_draw_corner(&self, cube: &Cube333, pos: usize, facelet: u8) -> bool {
+        /*
+        elif mode == "drfb":
+            self.should_draw_edge = lambda pos, piece, o, f: o & 5 > 0
+            self.should_draw_corner = lambda pos, piece, o, f: o != (2 - (piece % 2) if (piece + pos) % 2 else 0) and f == (o + 2 - (piece % 2)) % 3
+        */
+        let c = cube.corners.get_corners()[pos];
+        let is_bad = match (c.id + pos as u8) % 2 {
+            0 => c.orientation != 0,
+            _ => c.orientation != 2 - (c.id % 2)
+        };
+        is_bad &&  facelet == (c.orientation + 2 - (c.id % 2)) % 3
+    }
 }
 impl Solvable for DRRL {
     fn is_eligible(&self, cube: &Cube333) -> bool {
@@ -517,5 +579,23 @@ impl Solvable for DRRL {
         let mut cube = cube.clone();
         cube.transform(Transformation333::Z);
         DRUD.case_name(&cube)
+    }
+    fn should_draw_edge(&self, cube: &Cube333, pos: usize, _facelet: u8) -> bool {
+        let e = cube.edges.get_edges()[pos];
+        !e.oriented_fb || !e.oriented_ud
+    }
+    fn should_draw_corner(&self, cube: &Cube333, pos: usize, facelet: u8) -> bool {
+        /*
+        elif mode == "drrl":
+            self.should_draw_edge = lambda pos, piece, o, f: o & 6 > 0
+            self.should_draw_corner = lambda pos, piece, o, f: o != (1 + (piece % 2) if (piece + pos) % 2 else 0) and f == (o + 1 + (piece % 2)) % 3
+
+         */
+        let c = cube.corners.get_corners()[pos];
+        let is_bad = match (c.id + pos as u8) % 2 {
+            0 => c.orientation != 0,
+            _ => c.orientation != 1 + (c.id % 2)
+        };
+        is_bad &&  facelet == (c.orientation + 1 + (c.id % 2)) % 3
     }
 }

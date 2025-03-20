@@ -1,0 +1,11 @@
+click
+pydantic
+PyOpenGL
+pygame
+pyquaternion
+# numpy
+# PyQt
+
+# dev
+maturin
+

@@ -163,8 +163,24 @@ class CubeViz():
         self.cube.apply(solution)
         mode = ""
         if self.solution.steps:
-            mode = f"{self.solution.steps[-1].kind}{self.solution.steps[-1].variant}"
-        self.set_mode(mode)
+            self.should_draw_edge = self.is_bad_edge(self.solution.steps[-1].kind, self.solution.steps[-1].variant)
+            self.should_draw_corner = self.is_bad_corner(self.solution.steps[-1].kind, self.solution.steps[-1].variant)
+        else:
+            self.should_draw_edge = self.do_draw
+            self.should_draw_corner = self.do_draw
+            # mode = f"{self.solution.steps[-1].kind}{self.solution.steps[-1].variant}"
+            # self.set_mode(mode)
+        self.set_colors()
+
+    def is_bad_edge(self, kind, variant):
+        def f(pos_id, piece_id, orientation, face):
+            return self.cube.should_draw_edge(kind, variant, pos_id, face)
+        return f
+
+    def is_bad_corner(self, kind, variant):
+        def f(pos_id, piece_id, orientation, face):
+            return self.cube.should_draw_corner(kind, variant, pos_id, face)
+        return f
 
     def set_mode(self, mode: str):
         logging.debug(f"Setting mode to {mode}")

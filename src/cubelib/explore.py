@@ -127,20 +127,20 @@ def list():
         print(f"  {i + 1}: {' '.join(s)} ({len(s)})")
 
 
-def _append_move(move):
-    if _builder.allows_move(move):
-        _builder.add_step(move)
-        viz.set_solution(_builder.build())
-    else:
-        print(f"{move} not allowed after {_builder.previous.kind}{_builder.previous.variant}")
-
+def _append_moves(moves):
+    for move in moves.split(" "):
+        if _builder.allows_move(move):
+            _builder.add_step(move)
+            viz.set_solution(_builder.build())
+        else:
+            print(f"{move} not allowed after {_builder.previous.kind}{_builder.previous.variant}")
 
 def x():
     viz.xq_angle += math.pi/2
     viz.yq_angle = 0
 
 def z():
-    viz.yq_angle += math.pi/2
+    viz.yq_angle -= math.pi/2
     viz.xq_angle = 0
 
 def eofb():
@@ -207,11 +207,8 @@ def read_commands():
     while _running:
         try:
             cmd = input(f"{_builder.kind}{_builder.variant}> ").strip()
-            if cmd.upper() in MOVES:
-                _append_move(cmd.upper())
-            elif len([m for m in cmd.split(" ") if m.upper() not in MOVES]) == 0:
-                for m in cmd.split(" "):
-                    _append_move(m.upper())
+            if len([m for m in cmd.upper().split(" ") if m not in MOVES]) == 0:
+                _append_moves(cmd.upper())
             else:
                 if cmd.find("(") < 0:
                     cmd = f"{cmd}()"
@@ -228,9 +225,11 @@ if __name__ == "__main__":
     threading.Thread(target=read_commands).start()
     scramble("L D L U2 F2 D F' B2 D R F2 R D2 R2 F2 L' F2 R' U2 D2")
     eofb()
-    for m in "U R2 F".split():
-        _append_move(m)
+    _append_moves("R' U F")
     save()
     check(1)
-    drfb()
+    drud()
+    _append_moves("F2 U2 L U R2 B2 U' F2 U' D2 R")
+    save()
+    check(1)
     viz.run()
