@@ -287,82 +287,22 @@ impl Cube {
     }
 
     fn case_name_for_step(&self, step: &str, variant: &str) -> PyResult<String> {
-        match step {
-            "eo" => match variant {
-                "fb" => Ok(format!("{}e", self.0.count_bad_edges_fb())),
-                "rl" => Ok(format!("{}e", self.0.count_bad_edges_lr())),
-                "ud" => Ok(format!("{}e", self.0.count_bad_edges_ud())),
-                _ => Ok("".to_string()),
-            },
-            "dr" => match variant {
-                "fb" => {
-                    let mut cube = self.0.clone();
-                    cube.transform(Transformation333::X);
-                    Cube(cube).case_name_for_step("dr", "ud")
-                },
-                "rl" => {
-                    let mut cube = self.0.clone();
-                    cube.transform(Transformation333::Z);
-                    Cube(cube).case_name_for_step("dr", "ud")
-                },
-                "ud" => {
-                    let bad_corner_count = self.0.corners.get_corners().into_iter().filter(|c: &Corner| c.orientation != 0).count();
-                    let bad_edge_count = self.0.count_bad_edges_lr() + self.0.count_bad_edges_fb();
-                    Ok(format!("{}c{}e", bad_corner_count, bad_edge_count))
-                }
-                _ => Ok("".to_string()),
-            },
-            _ => Ok("".to_string()),
-        }
+        Ok(StepBuilder::from_kind(step, variant)
+            .map_err(|s| PyValueError::new_err(s))?
+            .case_name(&self.0))
     }
 
     fn is_step_solved(&self, step: &str, variant: &str) -> PyResult<bool> {
-        match step {
-            "eo" => match variant {
-                "fb" => Ok(self.0.count_bad_edges_fb() == 0),
-                "rl" => Ok(self.0.count_bad_edges_lr() == 0),
-                "ud" => Ok(self.0.count_bad_edges_ud() == 0),
-                //"" => Ok(self.0.count_bad_edges_fb() == 0 || self.0.count_bad_edges_lr() == 0 || self.0.count_bad_edges_ud() == 0),
-                "" => Ok(self.is_step_solved(step, "fb").unwrap()
-                    || self.is_step_solved(step, "rl").unwrap()
-                    || self.is_step_solved(step, "ud").unwrap()),
-                _ => Err(PyValueError::new_err(format!(
-                    "Invalid EO variant '{}'",
-                    variant
-                ))),
-            },
-            "dr" => match variant {
-                "fb" => {
-                    let mut cube = self.0.clone();
-                    cube.transform(Transformation333::X);
-                    let solved = cube.count_bad_edges_fb() == 0
-                        && cube.count_bad_edges_lr() == 0
-                        && DRUDEOFBCoord::from(&cube).val() == 0;
-                    Ok(solved)
-                },
-                "rl" => {
-                    let mut cube = self.0.clone();
-                    cube.transform(Transformation333::Z);
-                    let solved = cube.count_bad_edges_fb() == 0
-                        && cube.count_bad_edges_lr() == 0
-                        && DRUDEOFBCoord::from(&cube).val() == 0;
-                    Ok(solved)
-                },
-                "ud" => {
-                    let solved = self.0.count_bad_edges_fb() == 0
-                        && self.0.count_bad_edges_lr() == 0
-                        && DRUDEOFBCoord::from(&self.0).val() == 0;
-                    Ok(solved)
-                },
-                _ => Err(PyValueError::new_err(format!(
-                    "Invalid DR variant '{}'",
-                    variant
-                ))),
-            },
-            _ => Err(PyValueError::new_err(format!("Invalid step '{}'", step))),
-        }
+        Ok(StepBuilder::from_kind(step, variant)
+            .map_err(|s| PyValueError::new_err(s))?
+            .is_solved(&self.0))
     }
 
+    fn is_step_eligible(&self, step: &str, variant: &str) -> PyResult<bool> {
+        Ok(StepBuilder::from_kind(step, variant)
+            .map_err(|s| PyValueError::new_err(s))?
+            .is_eligible(&self.0))
+    }
 }
 
 #[pyfunction]
@@ -442,4 +382,140 @@ fn py_cubelib(_py: Python, m: &PyModule) -> PyResult<()> {
 
     m.add_function(wrap_pyfunction!(solve_step, m)?)?;
     Ok(())
+}
+
+trait Solvable {
+    fn is_solved(&self, cube: &Cube333) -> bool;
+    fn is_eligible(&self, cube: &Cube333) -> bool;
+    fn case_name(&self, cube: &Cube333) -> String;
+}
+struct StepBuilder;
+impl StepBuilder {
+    fn from_kind(kind: &str, variant: &str) -> Result<Box<dyn Solvable>, String> {
+        match kind {
+            "eo" => match variant {
+                "fb" => Ok(Box::new(EOFB)),
+                "rl" => Ok(Box::new(EORL)),
+                "ud" => Ok(Box::new(EOUD)),
+                _ => Err(format!("Unknown variant '{}' for eo", variant).into()),
+            },
+            "dr" => match variant {
+                "fb" => Ok(Box::new(DRFB)),
+                "rl" => Ok(Box::new(DRRL)),
+                "ud" => Ok(Box::new(DRUD)),
+                _ => Err(format!("Unknown variant '{}' for dr", variant).into()),
+            },
+            "" => Ok(Box::new(SCRAMBLED)),
+            _ => Err(format!("Unknown kind '{}'", kind).into()),
+        }
+    }
+}
+
+pub struct SCRAMBLED;
+impl Solvable for SCRAMBLED {
+    fn is_eligible(&self, _cube: &Cube333) -> bool {
+        true
+    }
+    fn is_solved(&self, _cube: &Cube333) -> bool {
+        true
+    }
+    fn case_name(&self, _cube: &Cube333) -> String {
+        "".to_string()
+    }
+}
+
+pub struct EOFB;
+pub struct EORL;
+pub struct EOUD;
+impl Solvable for EOFB {
+    fn is_eligible(&self, _cube: &Cube333) -> bool {
+        true
+    }
+
+    fn is_solved(&self, cube: &Cube333) -> bool {
+        cube.count_bad_edges_fb() == 0
+    }
+    fn case_name(&self, cube: &Cube333) -> String {
+        format!("{}e", cube.count_bad_edges_fb())
+    }
+}
+impl Solvable for EORL {
+    fn is_eligible(&self, _cube: &Cube333) -> bool {
+        true
+    }
+
+    fn is_solved(&self, cube: &Cube333) -> bool {
+        cube.count_bad_edges_lr() == 0
+    }
+    fn case_name(&self, cube: &Cube333) -> String {
+        format!("{}e", cube.count_bad_edges_lr())
+    }
+}
+impl Solvable for EOUD {
+    fn is_eligible(&self, _cube: &Cube333) -> bool {
+        true
+    }
+
+    fn is_solved(&self, cube: &Cube333) -> bool {
+        cube.count_bad_edges_ud() == 0
+    }
+    fn case_name(&self, cube: &Cube333) -> String {
+        format!("{}e", cube.count_bad_edges_ud())
+    }
+}
+pub struct DRUD;
+pub struct DRRL;
+pub struct DRFB;
+
+impl Solvable for DRUD {
+    fn is_eligible(&self, cube: &Cube333) -> bool {
+        EORL.is_solved(cube) || EOFB.is_solved(cube)
+    }
+
+    fn is_solved(&self, cube: &Cube333) -> bool {
+        let solved = cube.count_bad_edges_fb() == 0
+            && cube.count_bad_edges_lr() == 0
+            && DRUDEOFBCoord::from(cube).val() == 0;
+        solved
+    }
+    fn case_name(&self, cube: &Cube333) -> String {
+        let bad_corner_count = cube
+            .corners
+            .get_corners()
+            .into_iter()
+            .filter(|c: &Corner| c.orientation != 0)
+            .count();
+        let bad_edge_count = cube.count_bad_edges_lr() + cube.count_bad_edges_fb();
+        format!("{}c{}e", bad_corner_count, bad_edge_count)
+    }
+}
+impl Solvable for DRFB {
+    fn is_eligible(&self, cube: &Cube333) -> bool {
+        EORL.is_solved(cube) || EOUD.is_solved(cube)
+    }
+    fn is_solved(&self, cube: &Cube333) -> bool {
+        let mut cube = cube.clone();
+        cube.transform(Transformation333::X);
+        DRUD.is_solved(&cube)
+    }
+    fn case_name(&self, cube: &Cube333) -> String {
+        let mut cube = cube.clone();
+        cube.transform(Transformation333::X);
+        DRUD.case_name(&cube)
+    }
+}
+impl Solvable for DRRL {
+    fn is_eligible(&self, cube: &Cube333) -> bool {
+        EOUD.is_solved(cube) || EOFB.is_solved(cube)
+    }
+    fn is_solved(&self, cube: &Cube333) -> bool {
+        let mut cube = cube.clone();
+        cube.transform(Transformation333::Z);
+        DRUD.is_solved(&cube)
+    }
+    fn case_name(&self, cube: &Cube333) -> String {
+        let mut cube = cube.clone();
+        cube.transform(Transformation333::Z);
+        DRUD.case_name(&cube)
+    }
 }

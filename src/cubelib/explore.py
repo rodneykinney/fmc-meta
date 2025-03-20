@@ -4,6 +4,7 @@ import threading
 import sys
 import traceback
 import logging
+import math
 from collections import defaultdict
 from builtins import (list as llist)
 
@@ -93,14 +94,14 @@ def check(i):
     viz.set_solution(_builder.build())
 
 
-def is_solved(kind, variant):
-    print(f"{kind}{variant}? {viz.cube.is_step_solved(kind, variant)}")
-
-
 def back():
     global _builder
-    if _builder.previous is not None:
-        _builder = _builder.previous
+    prev = _builder.previous
+    if prev is not None:
+        _builder = SolutionBuilder(prev.kind, prev.variant, prev.previous)
+        viz.set_solution(_builder.build())
+    else:
+        _builder = SolutionBuilder("", "")
         viz.set_solution(_builder.build())
 
 
@@ -134,6 +135,14 @@ def _append_move(move):
         print(f"{move} not allowed after {_builder.previous.kind}{_builder.previous.variant}")
 
 
+def x():
+    viz.xq_angle += math.pi/2
+    viz.yq_angle = 0
+
+def z():
+    viz.yq_angle += math.pi/2
+    viz.xq_angle = 0
+
 def eofb():
     set_mode("eo", "fb")
 
@@ -160,8 +169,11 @@ def drfb():
 
 def set_mode(step, variant):
     global _builder
-    _builder = SolutionBuilder(step, variant, previous=_builder.previous)
-    viz.set_solution(_builder.build())
+    if viz.cube.is_step_eligible(step, variant):
+        _builder = SolutionBuilder(step, variant, previous=_builder.previous)
+        viz.set_solution(_builder.build())
+    else:
+        print(f"Cube is not eligible for {step}{variant}")
 
 
 def help():
@@ -215,8 +227,8 @@ viz = CubeViz()
 if __name__ == "__main__":
     threading.Thread(target=read_commands).start()
     scramble("L D L U2 F2 D F' B2 D R F2 R D2 R2 F2 L' F2 R' U2 D2")
-    eorl()
-    for m in "R F L U L".split():
+    eofb()
+    for m in "U R2 F".split():
         _append_move(m)
     save()
     check(1)

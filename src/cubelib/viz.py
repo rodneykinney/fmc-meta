@@ -147,6 +147,7 @@ class CubeViz():
         self.z_angle = 0
         self.y_angle = 0
         self.xq_angle = XA
+        self.yq_angle = 0
         self.zq_angle = ZA
 
         self.set_scramble(scramble)
@@ -301,8 +302,9 @@ class CubeViz():
         # q = quat.Quaternion().from_axis_angle([1,0,0], self.xq_angle) \
         #     .multiply(quat.Quaternion().from_axis_angle([0,0,1], self.zq_angle))
         qx = pyquaternion.Quaternion(axis=[1, 0, 0], angle=self.xq_angle)
+        qy = pyquaternion.Quaternion(axis=[0, 1, 0], angle=self.yq_angle)
         qz = pyquaternion.Quaternion(axis=[0, 0, 1], angle=self.zq_angle)
-        q =  qx * qz
+        q =  qz * qx * qy
         rotation_matrix = q.rotation_matrix
 
         # Order faces from back to front
@@ -437,7 +439,7 @@ class CubeViz():
                         current_mouse_pos = pygame.mouse.get_pos()
                         dx = current_mouse_pos[0] - last_mouse_pos[0]
                         dy = current_mouse_pos[1] - last_mouse_pos[1]
-                        self.rotate(dx, dy)
+                        self.rotate(dx, 0)
                         last_mouse_pos = current_mouse_pos
 
 
@@ -461,7 +463,7 @@ class CubeViz():
 
 USE_QT=True
 XA = 0
-ZA = math.pi/6
+ZA = -math.pi/6
 
 if __name__ == "__main__":
     viz = CubeViz()
@@ -471,7 +473,7 @@ if __name__ == "__main__":
     # m = qz.multiply(qx).to_rotation_matrix()
     qx = pyquaternion.Quaternion(axis=[1, 0, 0], angle=viz.xq_angle)
     qz = pyquaternion.Quaternion(axis=[0, 0, 1], angle=viz.zq_angle)
-    q = qx * qz
+    q = qz * qx
     m = q.rotation_matrix
 
     v = [0,0,1]
