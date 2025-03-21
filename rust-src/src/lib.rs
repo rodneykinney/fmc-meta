@@ -20,6 +20,7 @@ use cubelib::steps::tables::PruningTables333;
 use cubelib::steps::coord::Coord;
 use cubelib::steps::dr::coords::DRUDEOFBCoord;
 use cubelib::steps::eo::coords::BadEdgeCount;
+use cubelib::steps::fr::coords::FRUDWithSliceCoord;
 
 #[pyclass]
 struct CubeChecker {}
@@ -461,7 +462,9 @@ impl DrawableCorner for Corner {
 
 #[pyclass]
 pub struct StepInfo {
+    #[pyo3(get)]
     pub kind: String,
+    #[pyo3(get)]
     pub variant: String
 }
 
@@ -827,5 +830,35 @@ impl Solvable for HTRRL {
         let c = cube.corners.get_corners()[pos];
         (vec!(1,2,5,6).contains(&c.id) && facelet == c.facelet_rl()) || // L sticker
             (!c.oriented_ud(pos as u8) && facelet != c.facelet_fb())
+    }
+}
+pub struct FRUD;
+impl Solvable for FRUD {
+    fn is_move_allowed(&self, s: &str) -> PyResult<bool> {
+        let turn = Turn333::from_str(s).map_err(|_| PyValueError::new_err("Invalid move"))?;
+        match turn.face {
+            CubeFace::Up | CubeFace::Down => Ok(false),
+            _ => Ok(turn.dir == Direction::Half)
+        }
+    }
+
+    fn is_solved(&self, cube: &Cube333) -> bool {
+        FRUDWithSliceCoord::from(cube).val() == 0
+    }
+
+    fn is_eligible(&self, cube: &Cube333) -> bool {
+        DRUD.is_solved(cube)
+    }
+
+    fn case_name(&self, cube: &Cube333) -> String {
+        todo!()
+    }
+
+    fn should_draw_edge(&self, cube: &Cube333, pos: usize, facelet: u8) -> bool {
+        todo!()
+    }
+
+    fn should_draw_corner(&self, cube: &Cube333, pos: usize, facelet: u8) -> bool {
+        todo!()
     }
 }

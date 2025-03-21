@@ -1,12 +1,14 @@
-from functools import cached_property
 from typing import Optional, Dict, List, Tuple
+import io
 import threading
 import sys
 import traceback
 import logging
 import math
+import curses
 from collections import defaultdict
 from builtins import (list as llist)
+import inspect
 
 logging.basicConfig(
     filename="fmc-meta.log", filemode="w",
@@ -68,6 +70,7 @@ _builder = SolutionBuilder("", "")
 
 
 def scramble(str=""):
+    """Reset the cube to the given scramble"""
     global _builder
     viz.set_scramble(str)
     _builder = SolutionBuilder("", "")
@@ -75,6 +78,7 @@ def scramble(str=""):
 
 
 def check(i=0):
+    """Load and check the numbered algorithm"""
     global _builder
     b = _steps[(_builder.kind, _builder.variant)][i - 1]
     _builder = SolutionBuilder(
@@ -86,6 +90,7 @@ def check(i=0):
 
 
 def back():
+    """Go back to the previous step"""
     global _builder
     prev = _builder.previous
     if prev is not None:
@@ -97,12 +102,14 @@ def back():
 
 
 def reset():
+    """Reset the cube to the beginning of the current step"""
     global _builder
     _builder = SolutionBuilder(_builder.kind, _builder.variant, previous=_builder.previous)
     viz.set_solution(_builder.build())
 
 
 def save():
+    """Save this algorithm and start a new one"""
     global _builder
     if viz.cube.is_step_solved(_builder.kind, _builder.variant):
         _steps[(_builder.kind, _builder.variant)].append(_builder)
@@ -113,6 +120,8 @@ def save():
 
 
 def list():
+    """List the saved algorithms for the current step"""
+    print(f"{_builder.kind.upper()}{_builder.variant.upper()}: ")
     for (i, b) in enumerate(_steps[(_builder.kind, _builder.variant)]):
         s = b.all_steps()
         print(f"  {i + 1}: {' '.join(s)} ({len(s)})")
@@ -126,42 +135,56 @@ def _append_moves(moves):
         else:
             print(f"{move} not allowed after {_builder.previous.kind}{_builder.previous.variant}")
 
-def x():
-    viz.xq_angle += math.pi/2
+def _x():
+    viz.xq_angle -= math.pi/2
     viz.yq_angle = 0
+    viz.zq_angle = 0
 
-def z():
-    viz.yq_angle -= math.pi/2
+def _y():
     viz.xq_angle = 0
+    viz.yq_angle = 0
+    viz.zq_angle -= math.pi/2
+
+def _z():
+    viz.xq_angle = 0
+    viz.yq_angle += math.pi/2
+    viz.zq_angle = 0
 
 def eofb():
-    set_mode("eo", "fb")
+    """Look for EO on FB axis"""
+    _set_mode("eo", "fb")
 
 
 def eorl():
-    set_mode("eo", "rl")
+    """Look for EO on RL axis"""
+    _set_mode("eo", "rl")
 
 
 def eoud():
-    set_mode("eo", "ud")
+    """Look for EO on UD axis"""
+    _set_mode("eo", "ud")
 
 
 def drud():
-    set_mode("dr", "ud")
+    """Look for DR on UD axis"""
+    _set_mode("dr", "ud")
 
 
 def drrl():
-    set_mode("dr", "rl")
+    """Look for DR on RL axis"""
+    _set_mode("dr", "rl")
 
 
 def drfb():
-    set_mode("dr", "fb")
+    """Look for DR on FB axis"""
+    _set_mode("dr", "fb")
 
 def htr():
-    set_mode("htr", _builder.previous.variant)
+    """Look for HTR"""
+    _set_mode("htr", _builder.previous.variant)
 
 
-def set_mode(step, variant):
+def _set_mode(step, variant):
     global _builder
     if viz.cube.is_step_eligible(step, variant):
         _builder = SolutionBuilder(step, variant, previous=_builder.previous)
@@ -171,19 +194,18 @@ def set_mode(step, variant):
 
 
 def help():
+    """Print this help command"""
+    print("Cube view: [x,y,z] to change orientation, [left,right] to rotate")
     print("Commands:")
-    print("  scramble(str)")
-    print("  list")
-    print("")
-    print("  eofb")
-    print("  eorl")
-    print("  eoud")
-    print("")
-    print("  quit")
-    print("  help")
+    m = inspect.getmembers(sys.modules[__name__], inspect.isfunction)
+    for (name, func) in m:
+        if not name.startswith("_"):
+            print(f"  {name}:")
+            print(f"    {func.__doc__}")
 
 
 def quit():
+    """Exit"""
     global _running
     _running = False
     viz.stop()
@@ -196,21 +218,71 @@ MOVES = {
 }
 
 
-def read_commands():
+def read_commands(stdscr):
+    curses.noecho()
+    curses.cbreak()
+    stdscr.keypad(True)
+
+    def execute(cmd):
+        if len([m for m in cmd.upper().split(" ") if m not in MOVES]) == 0:
+            _append_moves(cmd.upper())
+        else:
+            if cmd.find("(") < 0:
+                cmd = f"{cmd}()"
+            exec(cmd)
+
+    def prompt():
+        s = f"{_builder.kind}{_builder.variant}> {cmd}"
+        stdscr.move(0,0)
+        stdscr.clrtoeol()
+        stdscr.addstr(0, 0, s)
+        stdscr.move(0, len(s))
+        stdscr.refresh()
+
+    def dump_stdout():
+        stdscr.move(1,0)
+        stdscr.clrtobot()
+        stdscr.addstr(1,0,stdout_buffer.getvalue())
+        stdout_buffer.truncate(0)
+        stdout_buffer.seek(0)
+
+    stdout_buffer = io.StringIO()
+    sys.stdout = stdout_buffer
+    sys.stderr = None
+
+    stdscr.clear()
     cmd = ""
+    prompt()
     while _running:
         try:
-            cmd = input(f"{_builder.kind}{_builder.variant}> ").strip()
-            if len([m for m in cmd.upper().split(" ") if m not in MOVES]) == 0:
-                _append_moves(cmd.upper())
+            key = stdscr.getch()
+            if key == curses.KEY_ENTER or key == 10:
+                execute(cmd.strip())
+                dump_stdout()
+                cmd = ""
+                prompt()
+            elif key == curses.KEY_BACKSPACE or key == 127:
+                cmd = cmd[:-1]
+                prompt()
+            elif key == curses.KEY_LEFT:
+                viz.rotate(-25)
+            elif key == curses.KEY_RIGHT:
+                viz.rotate(25)
+            elif chr(key) in {'x','y','z'} and cmd == "":
+                exec(f"_{chr(key)}()")
             else:
-                if cmd.find("(") < 0:
-                    cmd = f"{cmd}()"
-                exec(cmd)
+                cmd += chr(key)
+                prompt()
         except:
-            logging.debug(traceback.format_exc())
-            logging.debug(sys.exc_info())
-            print(f'Unknown command "{cmd}". Type "help" for help')
+            try:
+                logging.debug(traceback.format_exc())
+                logging.debug(sys.exc_info())
+                print(f'Unknown command "{cmd}". Type "help" for help')
+                dump_stdout()
+                cmd = ""
+                prompt()
+            except:
+                pass
 
 def _debug(pos,o):
     print(viz.cube.debug(pos, o))
@@ -218,7 +290,6 @@ def _debug(pos,o):
 viz = CubeViz()
 
 if __name__ == "__main__":
-    threading.Thread(target=read_commands).start()
     scramble("L D L U2 F2 D F' B2 D R F2 R D2 R2 F2 L' F2 R' U2 D2")
     eofb()
     _append_moves("R' U F")
@@ -240,4 +311,5 @@ if __name__ == "__main__":
     # _append_moves("U2 R2 D R2 D' L2 F2 U' R2 U")
     # save()
     #
+    threading.Thread(target=lambda: curses.wrapper(read_commands)).start()
     viz.run()

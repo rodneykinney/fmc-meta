@@ -47,7 +47,7 @@ YELLOW = (1, 1, 0)
 GREEN = (0, .6, 0)
 BLUE = (0, 0, 1)
 RED = (1, 0, 0)
-#ORANGE = (1, .8, .1)
+# ORANGE = (1, .8, .1)
 ORANGE = (1, .37, .2)
 GREY = (0.75, 0.75, 0.75)
 BACKGROUND = .3
@@ -144,11 +144,10 @@ class CubeViz():
         self.camera_x = 0.0
         self.camera_y = -10.0
         self.camera_z = 6.0
-        self.z_angle = 0
-        self.y_angle = 0
-        self.xq_angle = XA
+        self.xq_angle = 0
         self.yq_angle = 0
-        self.zq_angle = ZA
+        self.zq_angle = 0
+        self.view_angle = -math.pi / 6
 
         self.set_scramble(scramble)
 
@@ -166,14 +165,14 @@ class CubeViz():
             self.step_info = StepInfo(self.solution.steps[-1].kind, self.solution.steps[-1].variant)
         self.set_colors()
 
-    def should_draw_edge(self,pos_id, face):
+    def should_draw_edge(self, pos_id, face):
         return self.step_info.should_draw_edge(self.cube, pos_id, face)
 
     def should_draw_corner(self, pos_id, face):
         return self.step_info.should_draw_corner(self.cube, pos_id, face)
 
     def set_colors(self):
-        self.colors = [(1,1,1,.2)] * 54
+        self.colors = [(1, 1, 1, .2)] * 54
         self.colors[4] = WHITE + (self.opacity,)
         self.colors[13] = ORANGE + (self.opacity,)
         self.colors[22] = GREEN + (self.opacity,)
@@ -209,11 +208,11 @@ class CubeViz():
         glTranslatef(x, y, z)
         draw_grid = False
 
-    # Draw a square face
+        # Draw a square face
         glBegin(GL_QUADS)
         if axis == 'xy':
             if draw_grid:
-                glColor4f(0,0,0, color[3])
+                glColor4f(0, 0, 0, color[3])
                 glVertex3f(-0.5, -0.5, 0.0)
                 glVertex3f(0.5, -0.5, 0.0)
                 glVertex3f(0.5, 0.5, 0.0)
@@ -225,7 +224,7 @@ class CubeViz():
             glVertex3f(-0.48, 0.48, 0.0)
         elif axis == 'xz':
             if draw_grid:
-                glColor4f(0,0,0, color[3])
+                glColor4f(0, 0, 0, color[3])
                 glVertex3f(-0.5, 0.0, -0.5)
                 glVertex3f(0.5, 0.0, -0.5)
                 glVertex3f(0.5, 0.0, 0.5)
@@ -237,7 +236,7 @@ class CubeViz():
             glVertex3f(-0.48, 0.0, 0.48)
         elif axis == 'yz':
             if draw_grid:
-                glColor4f(0,0,0, color[3])
+                glColor4f(0, 0, 0, color[3])
                 glVertex3f(0.0, -0.5, -0.5)
                 glVertex3f(0.0, 0.5, -0.5)
                 glVertex3f(0.0, 0.5, 0.5)
@@ -263,66 +262,41 @@ class CubeViz():
                   0, 0, 0,  # Look at point
                   0, 1, 0)  # Up vector
 
-
         # Apply rotation
-        # q = quat.Quaternion().from_axis_angle([1,0,0], self.xq_angle) \
-        #     .multiply(quat.Quaternion().from_axis_angle([0,0,1], self.zq_angle))
         qx = pyquaternion.Quaternion(axis=[1, 0, 0], angle=self.xq_angle)
         qy = pyquaternion.Quaternion(axis=[0, 1, 0], angle=self.yq_angle)
         qz = pyquaternion.Quaternion(axis=[0, 0, 1], angle=self.zq_angle)
-        q =  qz * qx * qy
+        qview = pyquaternion.Quaternion(axis=[0, 0, 1], angle=self.view_angle)
+        q = qview * qz * qx * qy
         rotation_matrix = q.rotation_matrix
 
         # Order faces from back to front
-        def distance_eu(i):
-            c = math.cos(self.z_angle * math.pi / 180)
-            s = math.sin(self.z_angle * math.pi / 180)
-            xp = (facelet_x[i] * c - facelet_y[i] * s)
-            yp = (facelet_x[i] * s + facelet_y[i] * c)
-            zp = facelet_z[i]
-            c = math.cos(self.y_angle * math.pi / 180)
-            s = math.sin(self.y_angle * math.pi / 180)
-            xpp = (-xp * c - zp * s)
-            ypp = yp
-            zpp = (-xp * s + zp * c)
-            return (xpp - self.camera_x) ** 2 + \
-                (ypp - self.camera_y) ** 2 + \
-                (zpp - self.camera_z) ** 2
-
-        def distance_qt(i):
-            # v = np.array([facelet_x[i], facelet_y[i], facelet_z[i], 1.0], dtype=np.float32)
-            # v_rotated = np.dot(rotation_matrix, v)
+        def distance(i):
             v_rotated = q.rotate([facelet_x[i], facelet_y[i], facelet_z[i]])
             return (v_rotated[0] - self.camera_x) ** 2 + \
                 (v_rotated[1] - self.camera_y) ** 2 + \
                 (v_rotated[2] - self.camera_z) ** 2
 
-        distance = distance_qt if USE_QT else distance_eu
         faces = [
             (range(9 * i, 9 * (i + 1)), distance(9 * i + 4)) for i in range(0, 6)
         ]
         faces.sort(key=lambda x: -x[1])
         faces = [f for f, d in faces]
 
-        if USE_QT:
-            # Update the GL matrix with the new rotation
-            m = np.identity(4)
-            m[:3, :3] = rotation_matrix
+        # Update the GL matrix with the new rotation
+        m = np.identity(4)
+        m[:3, :3] = rotation_matrix
 
-            # Convert to OpenGL format (column-major) and apply
-            glPushMatrix()
-            glMultMatrixf(m.T.flatten())
-        else:
-            glRotatef(self.y_angle, 0, 1, 0)
-            glRotatef(self.z_angle, 0, 0, 1)
+        # Convert to OpenGL format (column-major) and apply
+        glPushMatrix()
+        glMultMatrixf(m.T.flatten())
 
         for face in faces:
             for i in face:
                 self.draw_facelet(facelet_x[i], facelet_y[i], facelet_z[i],
                                   self.colors[i], axis[i])
 
-        if USE_QT:
-            glPopMatrix()
+        glPopMatrix()
 
         # Draw text
         if not self.solution.steps:
@@ -346,7 +320,7 @@ class CubeViz():
         n = len(self.solution.steps)
         y = 10
         y += write(
-            f"{self.solution.steps[n - 1].kind}{self.solution.steps[n - 1].variant} - {self.solution.steps[n - 1].alg}",
+            f"{self.step_info.kind}{self.step_info.variant} - {self.solution.steps[n - 1].alg}",
             10, y)
         for i in range(2, n + 1):
             y += write(
@@ -355,23 +329,12 @@ class CubeViz():
 
         if self.solution.steps:
             write(
-                self.cube.case_name_for_step(self.solution.steps[-1].kind,
-                                             self.solution.steps[-1].variant),
+                self.step_info.case_name(self.cube),
                 self.display_width - 10, 10, right_justify=True
             )
 
     def rotate(self, dx, dy=0):
-        self.z_angle += dx
-        self.y_angle += dy
-        self.xq_angle += dy * .005
-        self.zq_angle += dx * .005
-
-
-    # def move_camera(self, dx, dy, dz):
-    #     """Move the camera position"""
-    #     self.camera_x += dx
-    #     self.camera_y += dy
-    #     self.camera_z += dz
+        self.view_angle += dx * .005
 
     def stop(self):
         self.running = False
@@ -384,7 +347,6 @@ class CubeViz():
         self.running = True
         dragging = False
         last_mouse_pos = None
-
 
         while self.running:
             for event in pygame.event.get():
@@ -408,18 +370,6 @@ class CubeViz():
                         self.rotate(dx, 0)
                         last_mouse_pos = current_mouse_pos
 
-
-
-                if event.type == pygame.KEYDOWN:
-                    if event.key == pygame.K_UP:
-                        self.rotate(0, 10)
-                    if event.key == pygame.K_DOWN:
-                        self.rotate(0, -10)
-                    if event.key == pygame.K_LEFT:
-                        self.rotate(-10, 0)
-                    if event.key == pygame.K_RIGHT:
-                        self.rotate(10, 0)
-
                 clock.tick(30)
 
             self.draw()
@@ -427,39 +377,7 @@ class CubeViz():
             pygame.display.flip()
         pygame.quit()
 
-USE_QT=True
-XA = 0
-ZA = -math.pi/6
 
 if __name__ == "__main__":
     viz = CubeViz()
-
-    # qx = quat.Quaternion().from_axis_angle([1,0,0], viz.xq_angle)
-    # qz = quat.Quaternion().from_axis_angle([0,0,1], viz.zq_angle)
-    # m = qz.multiply(qx).to_rotation_matrix()
-    qx = pyquaternion.Quaternion(axis=[1, 0, 0], angle=viz.xq_angle)
-    qz = pyquaternion.Quaternion(axis=[0, 0, 1], angle=viz.zq_angle)
-    q = qz * qx
-    m = q.rotation_matrix
-
-    v = [0,0,1]
-    rv = [math.floor(v+0.5) for v in q.rotate(v)]
-    print(f"U: {v} -> {rv}")
-    v = [-1,0,0]
-    rv = [math.floor(v+0.5) for v in q.rotate(v)]
-    print(f"L: {v} -> {rv}")
-    v = [0,-1,0]
-    rv = [math.floor(v+0.5) for v in q.rotate(v)]
-    print(f"F: {v} -> {rv}")
-    v = [1,0,0]
-    rv = [math.floor(v+0.5) for v in q.rotate(v)]
-    print(f"R: {v} -> {rv}")
-    v = [0,1,0]
-    rv = [math.floor(v+0.5) for v in q.rotate(v)]
-    print(f"B: {v} -> {rv}")
-    v = [0,0,-1]
-    rv = [math.floor(v+0.5) for v in q.rotate(v)]
-    print(f"D: {v} -> {rv}")
-
-
     viz.run()
