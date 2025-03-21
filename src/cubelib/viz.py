@@ -9,7 +9,7 @@ from OpenGL.GLU import *
 import math
 import numpy as np
 
-from py_cubelib import (Cube, Solution)
+from py_cubelib import (Cube, Solution, StepInfo)
 import pyquaternion
 
 # U + L + F + R + B + D
@@ -161,35 +161,16 @@ class CubeViz():
         self.cube = Cube(self.scramble)
         self.solution = solution
         self.cube.apply(solution)
-        kind, variant = (self.solution.steps[-1].kind, self.solution.steps[-1].variant) if self.solution.steps else ("","")
-        self.should_draw_edge = self.is_bad_edge(kind, variant)
-        self.should_draw_corner = self.is_bad_corner(kind, variant)
+        self.step_info = StepInfo("", "")
+        if self.solution.steps:
+            self.step_info = StepInfo(self.solution.steps[-1].kind, self.solution.steps[-1].variant)
         self.set_colors()
 
-    def is_bad_edge(self, kind, variant):
-        def f(pos_id, piece_id, orientation, face):
-            return self.cube.should_draw_edge(kind, variant, pos_id, face)
-        return f
+    def should_draw_edge(self,pos_id, face):
+        return self.step_info.should_draw_edge(self.cube, pos_id, face)
 
-    def is_bad_corner(self, kind, variant):
-        def f(pos_id, piece_id, orientation, face):
-            return self.cube.should_draw_corner(kind, variant, pos_id, face)
-        return f
-
-    def do_draw(self, pos_id, piece_id, orientation, face):
-        return True
-
-    def do_not_draw(self, pos_id, piece_id, orientation, face):
-        return False
-
-    def is_bad_eofb(self, pos_id, piece_id, orientation, face):
-        return orientation & 2 > 0
-
-    def is_bad_eoud(self, pos_id, piece_id, orientation, face):
-        return orientation & 4 > 0
-
-    def is_bad_eorl(self, pos_id, piece_id, orientation, face):
-        return orientation & 1 > 0
+    def should_draw_corner(self, pos_id, face):
+        return self.step_info.should_draw_corner(self.cube, pos_id, face)
 
     def set_colors(self):
         self.colors = [(1,1,1,.2)] * 54
@@ -203,7 +184,7 @@ class CubeViz():
         for i in range(0, 8):
             piece_id, orientation = corners[i]
             for side in range(0, 3):
-                if not self.should_draw_corner(i, piece_id, orientation, side):
+                if not self.should_draw_corner(i, side):
                     continue
                 face = (side + 3 - orientation) % 3
                 self.colors[corner_position_facelets[i][side]] = (
@@ -215,7 +196,7 @@ class CubeViz():
             orientation = default_orientation[home_slice[piece_id] ^ home_slice[i]]
             flipped = 0 if piece_orientation == orientation else 1
             for side in range(0, 2):
-                if not self.should_draw_edge(i, piece_id, piece_orientation, side):
+                if not self.should_draw_edge(i, side):
                     continue
                 self.colors[edge_position_facelets[i][side]] = edge_piece_colors[edges[i][0]][
                                                                    (side + flipped) % 2] + (

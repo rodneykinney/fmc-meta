@@ -15,22 +15,13 @@ logging.basicConfig(
 )
 
 from cubelib.viz import CubeViz
-from py_cubelib import Solution, SolutionStep, Algorithm
-
-FORBIDDEN_MOVES_AFTER = {
-    ("eo", "fb"): "F'B'",
-    ("eo", "rl"): "R'L'",
-    ("eo", "ud"): "U'D'",
-    ("dr", "fb"): "U'D'R'L'",
-    ("dr", "rl"): "F'B'U'D'",
-    ("dr", "ud"): "F'B'R'L'",
-}
-
+from py_cubelib import Solution, SolutionStep, Algorithm, StepInfo
 
 class SolutionBuilder:
     def __init__(self, kind: str, variant: str, previous: Optional["SolutionBuilder"] = None):
         self.kind = kind
         self.variant = variant
+        self.step_info = StepInfo(kind, variant)
         self.previous = previous
         self.steps = []
 
@@ -53,7 +44,7 @@ class SolutionBuilder:
     def allows_move(self, move: str) -> bool:
         if self.previous is None:
             return True
-        return move not in FORBIDDEN_MOVES_AFTER[(self.previous.kind, self.previous.variant)]
+        return self.previous.step_info.is_move_allowed(move)
 
     def all_steps(self):
         if self.previous is not None:
@@ -83,7 +74,7 @@ def scramble(str=""):
     viz.set_solution(_builder.build())
 
 
-def check(i):
+def check(i=0):
     global _builder
     b = _steps[(_builder.kind, _builder.variant)][i - 1]
     _builder = SolutionBuilder(
@@ -234,17 +225,18 @@ if __name__ == "__main__":
     save()
     check(1)
 
-    drrl()
-    _append_moves("F2 R2 U B2 L' F2 R2 L' F2 R2 L2 D R2 D")
+    # drrl()
+    # _append_moves("F2 R2 U B2 L' F2 R2 L' F2 R2 L2 D R2 D")
+    # save()
+    # check(1)
+    # z()
+    # htr()
+
+    drud()
+    _append_moves("U2 L F2 B2 R2 U L2 U2 D' R")
     save()
     check(1)
     htr()
-
-    # drud()
-    # _append_moves("F2 U2 L U R2 B2 U' F2 U' D2 R")
-    # save()
-    # check(1)
-    # htr()
     # _append_moves("U2 R2 D R2 D' L2 F2 U' R2 U")
     # save()
     #
