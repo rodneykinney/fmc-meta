@@ -4,16 +4,16 @@ use std::str::FromStr;
 
 use pyo3::exceptions::PyValueError;
 use pyo3::FromPyObject;
-// use pyo3::types::PyDict;
 
 use cubelib::algs::Algorithm as LibAlgorithm;
-use cubelib::cube::turn::{ApplyAlgorithm, TransformableMut};
+use cubelib::cube::turn::{ApplyAlgorithm, CubeAxis, TransformableMut};
 use cubelib::cube::{Corner, Cube333, Transformation333, Turn333};
 use cubelib::defs::{NissSwitchType, StepKind as LibStepKind};
 use cubelib::solver::df_search::CancelToken;
 use cubelib::solver::solution::{
     ApplySolution, Solution as LibSolution, SolutionStep as LibSolutionStep,
 };
+use cubelib::solver_new::util_cube::CubeState;
 use cubelib::steps::solver;
 use cubelib::steps::step::{next_step, StepConfig as LibStepConfig};
 use cubelib::steps::tables::PruningTables333;
@@ -157,25 +157,6 @@ impl SolutionStep {
         self.0.alg.normal_moves.push(turn);
         Ok(self.clone())
     }
-    // fn is_ready(&self, cube: &Cube) -> PyResult<bool> {
-    //     Ok(true)
-    // let step_configs = vec![LibStepConfig {
-    //     kind: self.0.kind,
-    //     substeps: None,
-    //     min: Some(0),
-    //     max: Some(0),
-    //     absolute_min: Some(0),
-    //     absolute_max: Some(0),
-    //     niss: None,
-    //     step_limit: None,
-    //     quality: 0,
-    //     params: HashMap::new(),
-    // }];
-    // let mut tables = PruningTables333::new();
-    // solver::gen_tables(&step_configs, &mut tables);
-    // let (step, options) = &solver::build_steps(step_configs.clone(), &tables).map_err(|e| PyValueError::new_err(format!("Error building steps: {:?}", e)))?[0];
-    // Ok(step.is_cube_ready(cube.0.clone()))
-    //}
 }
 
 #[pyclass]
@@ -304,15 +285,30 @@ impl Cube {
             .is_eligible(&self.0))
     }
 
-    fn should_draw_edge(&self, step: &str, variant: &str, pos: usize, facelet: u8) -> PyResult<bool> {
+    fn should_draw_edge(
+        &self,
+        step: &str,
+        variant: &str,
+        pos: usize,
+        facelet: u8,
+    ) -> PyResult<bool> {
         Ok(StepBuilder::from_kind(step, variant)
             .map_err(|s| PyValueError::new_err(s))?
             .should_draw_edge(&self.0, pos, facelet))
     }
-    fn should_draw_corner(&self, step: &str, variant: &str, pos: usize, facelet: u8) -> PyResult<bool> {
+    fn should_draw_corner(
+        &self,
+        step: &str,
+        variant: &str,
+        pos: usize,
+        facelet: u8,
+    ) -> PyResult<bool> {
         Ok(StepBuilder::from_kind(step, variant)
             .map_err(|s| PyValueError::new_err(s))?
             .should_draw_corner(&self.0, pos, facelet))
+    }
+    fn debug(&self, _pos: usize, _facelet: u8) -> String {
+        "Hello".to_string()
     }
 }
 
@@ -342,7 +338,7 @@ fn solve_step(
                 max: s.max,
                 absolute_min: s.absolute_min,
                 absolute_max: s.absolute_max,
-                niss: niss,
+                niss,
                 step_limit: s.step_limit,
                 quality: 0,
                 params: s.params.unwrap_or_default(),
@@ -373,8 +369,8 @@ fn solve_step(
                 cube.0.clone(),
                 &cancel_token,
             )
-            .map(|s| Solution(s))
-            .collect::<Vec<_>>()
+                .map(|s| Solution(s))
+                .collect::<Vec<_>>()
         })
         .collect::<Vec<_>>();
     Ok(solutions)
@@ -399,8 +395,8 @@ trait Solvable {
     fn is_solved(&self, cube: &Cube333) -> bool;
     fn is_eligible(&self, cube: &Cube333) -> bool;
     fn case_name(&self, cube: &Cube333) -> String;
-    fn should_draw_edge(&self, _cube: &Cube333, pos: usize, facelet: u8) -> bool;
-    fn should_draw_corner(&self, _cube: &Cube333, pos: usize, facelet: u8) -> bool;
+    fn should_draw_edge(&self, cube: &Cube333, pos: usize, facelet: u8) -> bool;
+    fn should_draw_corner(&self, cube: &Cube333, pos: usize, facelet: u8) -> bool;
 }
 struct StepBuilder;
 impl StepBuilder {
@@ -418,6 +414,12 @@ impl StepBuilder {
                 "ud" => Ok(Box::new(DRUD)),
                 _ => Err(format!("Unknown variant '{}' for dr", variant).into()),
             },
+            "htr" => match variant {
+                "fb" => Ok(Box::new(HTRFB)),
+                "rl" => Ok(Box::new(HTRRL)),
+                "ud" => Ok(Box::new(HTRUD)),
+                _ => Err(format!("Unknown variant '{}' for dr", variant).into()),
+            },
             "" => Ok(Box::new(SCRAMBLED)),
             _ => Err(format!("Unknown kind '{}'", kind).into()),
         }
@@ -426,10 +428,10 @@ impl StepBuilder {
 
 pub struct SCRAMBLED;
 impl Solvable for SCRAMBLED {
-    fn is_eligible(&self, _cube: &Cube333) -> bool {
+    fn is_solved(&self, _cube: &Cube333) -> bool {
         true
     }
-    fn is_solved(&self, _cube: &Cube333) -> bool {
+    fn is_eligible(&self, _cube: &Cube333) -> bool {
         true
     }
     fn case_name(&self, _cube: &Cube333) -> String {
@@ -447,12 +449,12 @@ pub struct EOFB;
 pub struct EORL;
 pub struct EOUD;
 impl Solvable for EOFB {
-    fn is_eligible(&self, _cube: &Cube333) -> bool {
-        true
-    }
-
     fn is_solved(&self, cube: &Cube333) -> bool {
         cube.count_bad_edges_fb() == 0
+    }
+
+    fn is_eligible(&self, _cube: &Cube333) -> bool {
+        true
     }
     fn case_name(&self, cube: &Cube333) -> String {
         format!("{}e", cube.count_bad_edges_fb())
@@ -465,12 +467,12 @@ impl Solvable for EOFB {
     }
 }
 impl Solvable for EORL {
-    fn is_eligible(&self, _cube: &Cube333) -> bool {
-        true
-    }
-
     fn is_solved(&self, cube: &Cube333) -> bool {
         cube.count_bad_edges_lr() == 0
+    }
+
+    fn is_eligible(&self, _cube: &Cube333) -> bool {
+        true
     }
     fn case_name(&self, cube: &Cube333) -> String {
         format!("{}e", cube.count_bad_edges_lr())
@@ -483,12 +485,12 @@ impl Solvable for EORL {
     }
 }
 impl Solvable for EOUD {
-    fn is_eligible(&self, _cube: &Cube333) -> bool {
-        true
-    }
-
     fn is_solved(&self, cube: &Cube333) -> bool {
         cube.count_bad_edges_ud() == 0
+    }
+
+    fn is_eligible(&self, _cube: &Cube333) -> bool {
+        true
     }
     fn case_name(&self, cube: &Cube333) -> String {
         format!("{}e", cube.count_bad_edges_ud())
@@ -505,15 +507,15 @@ pub struct DRRL;
 pub struct DRFB;
 
 impl Solvable for DRUD {
-    fn is_eligible(&self, cube: &Cube333) -> bool {
-        EORL.is_solved(cube) || EOFB.is_solved(cube)
-    }
-
     fn is_solved(&self, cube: &Cube333) -> bool {
         let solved = cube.count_bad_edges_fb() == 0
             && cube.count_bad_edges_lr() == 0
             && DRUDEOFBCoord::from(cube).val() == 0;
         solved
+    }
+
+    fn is_eligible(&self, cube: &Cube333) -> bool {
+        EORL.is_solved(cube) || EOFB.is_solved(cube)
     }
     fn case_name(&self, cube: &Cube333) -> String {
         let bad_corner_count = cube
@@ -535,13 +537,13 @@ impl Solvable for DRUD {
     }
 }
 impl Solvable for DRFB {
-    fn is_eligible(&self, cube: &Cube333) -> bool {
-        EORL.is_solved(cube) || EOUD.is_solved(cube)
-    }
     fn is_solved(&self, cube: &Cube333) -> bool {
         let mut cube = cube.clone();
         cube.transform(Transformation333::X);
         DRUD.is_solved(&cube)
+    }
+    fn is_eligible(&self, cube: &Cube333) -> bool {
+        EORL.is_solved(cube) || EOUD.is_solved(cube)
     }
     fn case_name(&self, cube: &Cube333) -> String {
         let mut cube = cube.clone();
@@ -553,27 +555,22 @@ impl Solvable for DRFB {
         !e.oriented_ud || !e.oriented_rl
     }
     fn should_draw_corner(&self, cube: &Cube333, pos: usize, facelet: u8) -> bool {
-        /*
-        elif mode == "drfb":
-            self.should_draw_edge = lambda pos, piece, o, f: o & 5 > 0
-            self.should_draw_corner = lambda pos, piece, o, f: o != (2 - (piece % 2) if (piece + pos) % 2 else 0) and f == (o + 2 - (piece % 2)) % 3
-        */
         let c = cube.corners.get_corners()[pos];
         let is_bad = match (c.id + pos as u8) % 2 {
             0 => c.orientation != 0,
-            _ => c.orientation != 2 - (c.id % 2)
+            _ => c.orientation != 2 - (c.id % 2),
         };
-        is_bad &&  facelet == (c.orientation + 2 - (c.id % 2)) % 3
+        is_bad && facelet == (c.orientation + 2 - (c.id % 2)) % 3
     }
 }
 impl Solvable for DRRL {
-    fn is_eligible(&self, cube: &Cube333) -> bool {
-        EOUD.is_solved(cube) || EOFB.is_solved(cube)
-    }
     fn is_solved(&self, cube: &Cube333) -> bool {
         let mut cube = cube.clone();
         cube.transform(Transformation333::Z);
         DRUD.is_solved(&cube)
+    }
+    fn is_eligible(&self, cube: &Cube333) -> bool {
+        EOUD.is_solved(cube) || EOFB.is_solved(cube)
     }
     fn case_name(&self, cube: &Cube333) -> String {
         let mut cube = cube.clone();
@@ -585,17 +582,145 @@ impl Solvable for DRRL {
         !e.oriented_fb || !e.oriented_ud
     }
     fn should_draw_corner(&self, cube: &Cube333, pos: usize, facelet: u8) -> bool {
-        /*
-        elif mode == "drrl":
-            self.should_draw_edge = lambda pos, piece, o, f: o & 6 > 0
-            self.should_draw_corner = lambda pos, piece, o, f: o != (1 + (piece % 2) if (piece + pos) % 2 else 0) and f == (o + 1 + (piece % 2)) % 3
-
-         */
         let c = cube.corners.get_corners()[pos];
         let is_bad = match (c.id + pos as u8) % 2 {
             0 => c.orientation != 0,
-            _ => c.orientation != 1 + (c.id % 2)
+            _ => c.orientation != 1 + (c.id % 2),
         };
-        is_bad &&  facelet == (c.orientation + 1 + (c.id % 2)) % 3
+        is_bad && facelet == (c.orientation + 1 + (c.id % 2)) % 3
+    }
+}
+
+pub struct HTRUD;
+pub struct HTRFB;
+pub struct HTRRL;
+impl Solvable for HTRUD {
+    fn is_solved(&self, cube: &Cube333) -> bool {
+        match cube.get_dr_subset() {
+            Some(s) => s.qt == 0,
+            _ => false,
+        }
+    }
+    fn is_eligible(&self, cube: &Cube333) -> bool {
+        match cube.get_dr_subset() {
+            Some(_) => true,
+            _ => false,
+        }
+    }
+    fn case_name(&self, cube: &Cube333) -> String {
+        match cube.get_dr_subset() {
+            Some(s) => s.to_string(),
+            _ => "".to_string(),
+        }
+    }
+    fn should_draw_edge(&self, cube: &Cube333, pos: usize, facelet: u8) -> bool {
+        !cube.edges.get_edges()[pos].oriented_ud && facelet == 1
+    }
+    fn should_draw_corner(&self, cube: &Cube333, pos: usize, facelet: u8) -> bool {
+        let c = cube.corners.get_corners()[pos];
+        let pos = pos as u8;
+        match (c.id + pos) % 2 {
+            1 => {
+                // Bad corner
+                match c.id / 4 {
+                    1 => facelet == 0, // Draw D
+                    _ => c.orientation != facelet,
+                }
+            }
+            0 => {
+                // In home orbit
+                match c.id / 4 {
+                    1 => facelet == 0,
+                    _ => false
+                }
+            }
+            _ => false,
+        }
+    }
+}
+impl Solvable for HTRFB {
+    fn is_solved(&self, cube: &Cube333) -> bool {
+        HTRUD.is_solved(cube)
+    }
+    fn is_eligible(&self, cube: &Cube333) -> bool {
+        HTRUD.is_eligible(cube)
+    }
+    fn case_name(&self, cube: &Cube333) -> String {
+        HTRUD.case_name(cube)
+    }
+    fn should_draw_edge(&self, cube: &Cube333, pos: usize, facelet: u8) -> bool {
+        let e = cube.edges.get_edges()[pos];
+        if !e.oriented_fb {
+            match e.id {
+                4 | 5 | 6 | 7 => facelet == 1,
+                _ => facelet == 0,
+            }
+        } else {
+            false
+        }
+    }
+    fn should_draw_corner(&self, cube: &Cube333, pos: usize, facelet: u8) -> bool {
+        let c = cube.corners.get_corners()[pos];
+        let pos = pos as u8;
+        match (c.id + pos) % 2 {
+            1 => {
+                // Bad corner
+                match c.id  {
+                    0 | 3 | 4 | 7 => facelet == 1 + (c.id % 2), // Draw L
+                    _ => c.orientation != 2 - (c.id % 2)
+                }
+            }
+            0 => {
+                // In home orbit
+                match c.id  {
+                    0 | 3 | 4 | 7 => facelet == 1 + (c.id % 2), // Draw L
+                    _ => false
+                }
+            }
+            _ => false,
+        }
+    }
+}
+impl Solvable for HTRRL {
+    fn is_solved(&self, cube: &Cube333) -> bool {
+        HTRUD.is_solved(cube)
+    }
+    fn is_eligible(&self, cube: &Cube333) -> bool {
+        HTRUD.is_eligible(cube)
+    }
+    fn case_name(&self, cube: &Cube333) -> String {
+        HTRUD.case_name(cube)
+    }
+    fn should_draw_edge(&self, cube: &Cube333, pos: usize, facelet: u8) -> bool {
+        !cube.edges.get_edges()[pos].oriented_rl && facelet == 0
+    }
+    fn should_draw_corner(&self, cube: &Cube333, pos: usize, facelet: u8) -> bool {
+        let c = cube.corners.get_corners()[pos];
+        let pos = pos as u8;
+        match (c.id + pos) % 2 {
+            1 => {
+                // Bad corner
+                match c.id  {
+                    0 | 3 | 4 | 7 => true, // Draw L
+                    _ => facelet != 2 - (c.id % 2) // facelet == 2 - (c.id % 2) // false, //facelet == 2 - (c.id % 2) // c.orientation != (facelet + 1 + (c.id % 2)) % 3
+                }
+            }
+            0 => {
+                // Bad odd
+                // draw if face=1, o=1
+                // bad even
+                // draw if face=2, o=2
+                // Good corner c.id % 2 == 0
+                // draw if face=1
+                // Good corner, c.id % 2 == 1
+                // draw if face=2
+                // In home orbit
+                match c.id  {
+                    0 | 3 | 4 | 7 => facelet == 1 + (c.id % 2), // Draw L
+                    _ => false // facelet == 1 + (c.id % 2), // facelet == 2 - (c.id % 2) // false
+                }
+            }
+            _ => false,
+        }
     }
 }

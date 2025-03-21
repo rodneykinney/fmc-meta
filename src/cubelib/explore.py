@@ -166,6 +166,9 @@ def drrl():
 def drfb():
     set_mode("dr", "fb")
 
+def htr():
+    set_mode("htr", _builder.previous.variant)
+
 
 def set_mode(step, variant):
     global _builder
@@ -218,6 +221,8 @@ def read_commands():
             logging.debug(sys.exc_info())
             print(f'Unknown command "{cmd}". Type "help" for help')
 
+def _debug(pos,o):
+    print(viz.cube.debug(pos, o))
 
 viz = CubeViz()
 
@@ -228,8 +233,19 @@ if __name__ == "__main__":
     _append_moves("R' U F")
     save()
     check(1)
-    drud()
-    _append_moves("F2 U2 L U R2 B2 U' F2 U' D2 R")
+
+    drrl()
+    _append_moves("F2 R2 U B2 L' F2 R2 L' F2 R2 L2 D R2 D")
     save()
     check(1)
+    htr()
+
+    # drud()
+    # _append_moves("F2 U2 L U R2 B2 U' F2 U' D2 R")
+    # save()
+    # check(1)
+    # htr()
+    # _append_moves("U2 R2 D R2 D' L2 F2 U' R2 U")
+    # save()
+    #
     viz.run()

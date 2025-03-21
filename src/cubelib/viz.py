@@ -161,15 +161,9 @@ class CubeViz():
         self.cube = Cube(self.scramble)
         self.solution = solution
         self.cube.apply(solution)
-        mode = ""
-        if self.solution.steps:
-            self.should_draw_edge = self.is_bad_edge(self.solution.steps[-1].kind, self.solution.steps[-1].variant)
-            self.should_draw_corner = self.is_bad_corner(self.solution.steps[-1].kind, self.solution.steps[-1].variant)
-        else:
-            self.should_draw_edge = self.do_draw
-            self.should_draw_corner = self.do_draw
-            # mode = f"{self.solution.steps[-1].kind}{self.solution.steps[-1].variant}"
-            # self.set_mode(mode)
+        kind, variant = (self.solution.steps[-1].kind, self.solution.steps[-1].variant) if self.solution.steps else ("","")
+        self.should_draw_edge = self.is_bad_edge(kind, variant)
+        self.should_draw_corner = self.is_bad_corner(kind, variant)
         self.set_colors()
 
     def is_bad_edge(self, kind, variant):
@@ -181,31 +175,6 @@ class CubeViz():
         def f(pos_id, piece_id, orientation, face):
             return self.cube.should_draw_corner(kind, variant, pos_id, face)
         return f
-
-    def set_mode(self, mode: str):
-        logging.debug(f"Setting mode to {mode}")
-        if mode == "eofb":
-            self.should_draw_edge = self.is_bad_eofb
-            self.should_draw_corner = self.do_not_draw
-        elif mode == "eorl":
-            self.should_draw_edge = self.is_bad_eorl
-            self.should_draw_corner = self.do_not_draw
-        elif mode == "eoud":
-            self.should_draw_edge = self.is_bad_eoud
-            self.should_draw_corner = self.do_not_draw
-        elif mode == "drud":
-            self.should_draw_edge = lambda pos, piece, o, f: o & 3 > 0
-            self.should_draw_corner = lambda pos, piece, o, f: o != 0 and o == f
-        elif mode == "drfb":
-            self.should_draw_edge = lambda pos, piece, o, f: o & 5 > 0
-            self.should_draw_corner = lambda pos, piece, o, f: o != (2 - (piece % 2) if (piece + pos) % 2 else 0) and f == (o + 2 - (piece % 2)) % 3
-        elif mode == "drrl":
-            self.should_draw_edge = lambda pos, piece, o, f: o & 6 > 0
-            self.should_draw_corner = lambda pos, piece, o, f: o != (1 + (piece % 2) if (piece + pos) % 2 else 0) and f == (o + 1 + (piece % 2)) % 3
-        else:
-            self.should_draw_edge = self.do_draw
-            self.should_draw_corner = self.do_draw
-        self.set_colors()
 
     def do_draw(self, pos_id, piece_id, orientation, face):
         return True
