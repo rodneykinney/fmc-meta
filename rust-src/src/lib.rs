@@ -25,17 +25,6 @@ use cubelib::steps::fr::coords::{
 };
 
 #[pyclass]
-struct CubeChecker {}
-
-#[pymethods]
-impl CubeChecker {
-    #[new]
-    fn new() -> PyResult<Self> {
-        Ok(CubeChecker {})
-    }
-}
-
-#[pyclass]
 #[derive(FromPyObject)]
 struct StepConfig {
     kind: String,
@@ -267,47 +256,6 @@ impl Cube {
 
     fn apply(&mut self, solution: &Solution) {
         self.0.apply_solution(&solution.0);
-    }
-
-    fn case_name_for_step(&self, step: &str, variant: &str) -> PyResult<String> {
-        Ok(StepBuilder::from_kind(step, variant)
-            .map_err(|s| PyValueError::new_err(s))?
-            .case_name(&self.0))
-    }
-
-    fn is_step_solved(&self, step: &str, variant: &str) -> PyResult<bool> {
-        Ok(StepBuilder::from_kind(step, variant)
-            .map_err(|s| PyValueError::new_err(s))?
-            .is_solved(&self.0))
-    }
-
-    fn is_step_eligible(&self, step: &str, variant: &str) -> PyResult<bool> {
-        Ok(StepBuilder::from_kind(step, variant)
-            .map_err(|s| PyValueError::new_err(s))?
-            .is_eligible(&self.0))
-    }
-
-    fn should_draw_edge(
-        &self,
-        step: &str,
-        variant: &str,
-        pos: usize,
-        facelet: u8,
-    ) -> PyResult<bool> {
-        Ok(StepBuilder::from_kind(step, variant)
-            .map_err(|s| PyValueError::new_err(s))?
-            .should_draw_edge(&self.0, pos, facelet))
-    }
-    fn should_draw_corner(
-        &self,
-        step: &str,
-        variant: &str,
-        pos: usize,
-        facelet: u8,
-    ) -> PyResult<bool> {
-        Ok(StepBuilder::from_kind(step, variant)
-            .map_err(|s| PyValueError::new_err(s))?
-            .should_draw_corner(&self.0, pos, facelet))
     }
 }
 
@@ -1090,7 +1038,7 @@ const CORNER_UD_FACELETS: [u8; 8] = [0, 0, 0, 0, 0, 0, 0, 0];
 const CORNER_FB_FACELETS: [u8; 8] = [2, 1, 2, 1, 2, 1, 2, 1];
 const CORNER_RL_FACELETS: [u8; 8] = [1, 2, 1, 2, 1, 2, 1, 2];
 
-const EDGE_OPPOSITE_E_SLICE: [u8; 12] = [6, 5, 4, 11, 4, 5, 6, 7, 2, 1, 0, 3];
+const EDGE_OPPOSITE_E_SLICE: [u8; 12] = [10, 9, 8, 11, 4, 5, 6, 7, 2, 1, 0, 3];
 const EDGE_OPPOSITE_S_SLICE: [u8; 12] = [2, 1, 0, 3, 6, 7, 4, 5, 10, 9, 8, 11];
 const EDGE_OPPOSITE_M_SLICE: [u8; 12] = [0, 3, 2, 1, 5, 4, 7, 6, 8, 11, 10, 9];
 
