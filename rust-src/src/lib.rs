@@ -6,7 +6,7 @@ use pyo3::exceptions::PyValueError;
 use pyo3::FromPyObject;
 
 use cubelib::algs::Algorithm as LibAlgorithm;
-use cubelib::cube::turn::{ApplyAlgorithm, TransformableMut};
+use cubelib::cube::turn::{ApplyAlgorithm, TransformableMut, TurnableMut};
 use cubelib::cube::{Corner, Cube333, CubeFace, Direction, Edge, Transformation333, Turn333};
 use cubelib::defs::{NissSwitchType, StepKind as LibStepKind};
 use cubelib::solver::df_search::CancelToken;
@@ -20,7 +20,9 @@ use cubelib::steps::tables::PruningTables333;
 use cubelib::steps::coord::Coord;
 use cubelib::steps::dr::coords::DRUDEOFBCoord;
 use cubelib::steps::eo::coords::BadEdgeCount;
-use cubelib::steps::fr::coords::FRUDWithSliceCoord;
+use cubelib::steps::fr::coords::{
+    FRCPOrbitCoord, FREdgesCoord, FROrbitParityCoord, FRUDNoSliceCoord,
+};
 
 #[pyclass]
 struct CubeChecker {}
@@ -307,9 +309,6 @@ impl Cube {
             .map_err(|s| PyValueError::new_err(s))?
             .should_draw_corner(&self.0, pos, facelet))
     }
-    fn debug(&self, _pos: usize, _facelet: u8) -> String {
-        "Hello".to_string()
-    }
 }
 
 #[pyfunction]
@@ -386,8 +385,8 @@ fn py_cubelib(_py: Python, m: &PyModule) -> PyResult<()> {
     m.add_class::<SolutionStep>()?;
     m.add_class::<StepConfig>()?;
     m.add_class::<StepInfo>()?;
-    m.add("foo", PyModule::new(_py, "StepKind")?)?;
 
+    m.add_function(wrap_pyfunction!(debug, m)?)?;
     m.add_function(wrap_pyfunction!(solve_step, m)?)?;
     Ok(())
 }
@@ -396,6 +395,9 @@ trait DrawableEdge {
     fn facelet_ud(&self) -> Option<u8>;
     fn facelet_fb(&self) -> Option<u8>;
     fn facelet_rl(&self) -> Option<u8>;
+    fn e_slice_opposite(&self) -> u8;
+    fn s_slice_opposite(&self) -> u8;
+    fn m_slice_opposite(&self) -> u8;
 }
 impl DrawableEdge for Edge {
     fn facelet_ud(&self) -> Option<u8> {
@@ -418,6 +420,58 @@ impl DrawableEdge for Edge {
             _ => None,
         }
     }
+    fn e_slice_opposite(&self) -> u8 {
+        match self.id {
+            4 | 5 | 6 | 7 => self.id,
+            _ => {
+                let mut cube = Cube333::default();
+                cube.turn(Turn333::R2);
+                cube.turn(Turn333::L2);
+                cube.turn(Turn333::F2);
+                cube.turn(Turn333::B2);
+                cube.edges.get_edges()[self.id as usize].id
+            }
+        }
+    }
+    fn s_slice_opposite(&self) -> u8 {
+        match self.id {
+            1 | 3 | 9 | 11 => self.id,
+            _ => {
+                let mut cube = Cube333::default();
+                cube.turn(Turn333::R2);
+                cube.turn(Turn333::L2);
+                cube.turn(Turn333::U2);
+                cube.turn(Turn333::D2);
+                cube.edges.get_edges()[self.id as usize].id
+            }
+        }
+    }
+    fn m_slice_opposite(&self) -> u8 {
+        match self.id {
+            0 | 2 | 8 | 10 => self.id,
+            _ => {
+                let mut cube = Cube333::default();
+                cube.turn(Turn333::F2);
+                cube.turn(Turn333::B2);
+                cube.turn(Turn333::U2);
+                cube.turn(Turn333::D2);
+                cube.edges.get_edges()[self.id as usize].id
+            }
+        }
+    }
+}
+
+#[pyfunction]
+fn debug(cube: &Cube) -> String {
+    let cube = cube.0;
+    let s = format!(
+        "orbit={}, parity={}, edges={}\n",
+        FRCPOrbitCoord::from(&cube.corners).val(),
+        FROrbitParityCoord::from(&cube).val(),
+        FREdgesCoord::from(&cube.edges).val()
+    );
+    let s = format!("{}\ncase={}", FRUD.case_name(&cube), s);
+    s
 }
 
 trait DrawableCorner {
@@ -427,6 +481,9 @@ trait DrawableCorner {
     fn facelet_ud(&self) -> u8;
     fn facelet_fb(&self) -> u8;
     fn facelet_rl(&self) -> u8;
+    fn e_slice_opposite(&self) -> u8;
+    fn s_slice_opposite(&self) -> u8;
+    fn m_slice_opposite(&self) -> u8;
 }
 impl DrawableCorner for Corner {
     fn oriented_ud(&self, _pos: u8) -> bool {
@@ -458,6 +515,17 @@ impl DrawableCorner for Corner {
     fn facelet_rl(&self) -> u8 {
         (self.orientation + 1 + (self.id % 2)) % 3
     }
+    fn e_slice_opposite(&self) -> u8 {
+        7 - self.id
+    }
+    fn s_slice_opposite(&self) -> u8 {
+        // 0,3 2,1 4,7 6,5
+        4 * (self.id / 4) + 3 - (self.id % 4)
+    }
+    fn m_slice_opposite(&self) -> u8 {
+        // 0,1 2,3 4,5 6.7
+        2 * (self.id / 2) + 1 - (self.id % 2)
+    }
 }
 
 #[pyclass]
@@ -465,7 +533,7 @@ pub struct StepInfo {
     #[pyo3(get)]
     pub kind: String,
     #[pyo3(get)]
-    pub variant: String
+    pub variant: String,
 }
 
 impl StepInfo {
@@ -502,10 +570,12 @@ impl StepInfo {
 
     #[new]
     fn new(kind: &str, variant: &str) -> PyResult<Self> {
-        Ok(StepInfo { kind: kind.to_string(), variant: variant.to_string() })
+        Ok(StepInfo {
+            kind: kind.to_string(),
+            variant: variant.to_string(),
+        })
     }
 }
-
 
 trait Solvable {
     fn is_move_allowed(&self, s: &str) -> PyResult<bool>;
@@ -535,6 +605,12 @@ impl StepBuilder {
                 "fb" => Ok(Box::new(HTRFB)),
                 "rl" => Ok(Box::new(HTRRL)),
                 "ud" => Ok(Box::new(HTRUD)),
+                _ => Err(format!("Unknown variant '{}' for dr", variant).into()),
+            },
+            "fr" => match variant {
+                "ud" => Ok(Box::new(FRUD)),
+                "fb" => Ok(Box::new(FRFB)),
+                "rl" => Ok(Box::new(FRRL)),
                 _ => Err(format!("Unknown variant '{}' for dr", variant).into()),
             },
             "" => Ok(Box::new(SCRAMBLED)),
@@ -574,7 +650,7 @@ impl Solvable for EOFB {
         let turn = Turn333::from_str(s).map_err(|_| PyValueError::new_err("Invalid move"))?;
         match turn.face {
             CubeFace::Front | CubeFace::Back => Ok(turn.dir == Direction::Half),
-            _ => Ok(true)
+            _ => Ok(true),
         }
     }
 
@@ -596,11 +672,11 @@ impl Solvable for EOFB {
     }
 }
 impl Solvable for EORL {
-    fn is_move_allowed(&self,s: &str) -> PyResult<bool> {
+    fn is_move_allowed(&self, s: &str) -> PyResult<bool> {
         let turn = Turn333::from_str(s).map_err(|_| PyValueError::new_err("Invalid move"))?;
         match turn.face {
             CubeFace::Right | CubeFace::Left => Ok(turn.dir == Direction::Half),
-            _ => Ok(true)
+            _ => Ok(true),
         }
     }
 
@@ -626,7 +702,7 @@ impl Solvable for EOUD {
         let turn = Turn333::from_str(s).map_err(|_| PyValueError::new_err("Invalid move"))?;
         match turn.face {
             CubeFace::Up | CubeFace::Down => Ok(turn.dir == Direction::Half),
-            _ => Ok(true)
+            _ => Ok(true),
         }
     }
     fn is_solved(&self, cube: &Cube333) -> bool {
@@ -655,7 +731,7 @@ impl Solvable for DRUD {
         let turn = Turn333::from_str(s).map_err(|_| PyValueError::new_err("Invalid move"))?;
         match turn.face {
             CubeFace::Up | CubeFace::Down => Ok(true),
-            _ => Ok(turn.dir == Direction::Half)
+            _ => Ok(turn.dir == Direction::Half),
         }
     }
 
@@ -693,7 +769,7 @@ impl Solvable for DRFB {
         let turn = Turn333::from_str(s).map_err(|_| PyValueError::new_err("Invalid move"))?;
         match turn.face {
             CubeFace::Front | CubeFace::Back => Ok(true),
-            _ => Ok(turn.dir == Direction::Half)
+            _ => Ok(turn.dir == Direction::Half),
         }
     }
 
@@ -724,7 +800,7 @@ impl Solvable for DRRL {
         let turn = Turn333::from_str(s).map_err(|_| PyValueError::new_err("Invalid move"))?;
         match turn.face {
             CubeFace::Right | CubeFace::Left => Ok(true),
-            _ => Ok(turn.dir == Direction::Half)
+            _ => Ok(turn.dir == Direction::Half),
         }
     }
     fn is_solved(&self, cube: &Cube333) -> bool {
@@ -751,8 +827,6 @@ impl Solvable for DRRL {
 }
 
 pub struct HTRUD;
-pub struct HTRFB;
-pub struct HTRRL;
 impl Solvable for HTRUD {
     fn is_move_allowed(&self, s: &str) -> PyResult<bool> {
         let turn = Turn333::from_str(s).map_err(|_| PyValueError::new_err("Invalid move"))?;
@@ -783,9 +857,10 @@ impl Solvable for HTRUD {
     fn should_draw_corner(&self, cube: &Cube333, pos: usize, facelet: u8) -> bool {
         let c = cube.corners.get_corners()[pos];
         (c.id / 4 == 1 && facelet == c.facelet_ud()) || // D sticker
-            (!c.oriented_fb(pos as u8) && facelet != c.facelet_ud())
+                (!c.oriented_fb(pos as u8) && facelet != c.facelet_ud())
     }
 }
+pub struct HTRFB;
 impl Solvable for HTRFB {
     fn is_move_allowed(&self, s: &str) -> PyResult<bool> {
         HTRUD.is_move_allowed(s)
@@ -805,10 +880,11 @@ impl Solvable for HTRFB {
     }
     fn should_draw_corner(&self, cube: &Cube333, pos: usize, facelet: u8) -> bool {
         let c = cube.corners.get_corners()[pos];
-        (vec!(0,1,6,7).contains(&c.id) && facelet == c.facelet_fb()) || // B sticker
-            (!c.oriented_rl(pos as u8) && facelet != c.facelet_fb())
+        (vec!(0, 1, 6, 7).contains(&c.id) && facelet == c.facelet_fb()) || // B sticker
+                (!c.oriented_rl(pos as u8) && facelet != c.facelet_fb())
     }
 }
+pub struct HTRRL;
 impl Solvable for HTRRL {
     fn is_move_allowed(&self, s: &str) -> PyResult<bool> {
         HTRUD.is_move_allowed(s)
@@ -828,37 +904,177 @@ impl Solvable for HTRRL {
     }
     fn should_draw_corner(&self, cube: &Cube333, pos: usize, facelet: u8) -> bool {
         let c = cube.corners.get_corners()[pos];
-        (vec!(1,2,5,6).contains(&c.id) && facelet == c.facelet_rl()) || // L sticker
-            (!c.oriented_ud(pos as u8) && facelet != c.facelet_fb())
+        (vec!(1, 2, 5, 6).contains(&c.id) && facelet == c.facelet_rl()) || // L sticker
+                (!c.oriented_ud(pos as u8) && facelet != c.facelet_fb())
     }
 }
 pub struct FRUD;
+pub struct FRRL;
 impl Solvable for FRUD {
     fn is_move_allowed(&self, s: &str) -> PyResult<bool> {
         let turn = Turn333::from_str(s).map_err(|_| PyValueError::new_err("Invalid move"))?;
         match turn.face {
             CubeFace::Up | CubeFace::Down => Ok(false),
-            _ => Ok(turn.dir == Direction::Half)
+            _ => Ok(turn.dir == Direction::Half),
         }
     }
 
     fn is_solved(&self, cube: &Cube333) -> bool {
-        FRUDWithSliceCoord::from(cube).val() == 0
+        FRUDNoSliceCoord::from(cube).val() == 0
     }
 
     fn is_eligible(&self, cube: &Cube333) -> bool {
-        DRUD.is_solved(cube)
+        HTRUD.is_solved(cube)
     }
 
     fn case_name(&self, cube: &Cube333) -> String {
-        todo!()
+        let parity = FROrbitParityCoord::from(cube).val() == 1;
+        let corner_case = match (FRCPOrbitCoord::from(&cube.corners).val(), parity) {
+            (0, true) => "0c3",
+            (0, false) => "0c0",
+            (3, true) => "4c1",
+            (3, false) => "4c2",
+            (_, true) => "6c1",
+            (_, false) => "6c2",
+        };
+        let bad_edge_count = cube
+            .edges
+            .get_edges()
+            .into_iter()
+            .enumerate()
+            .filter(|(pos, e)| {
+                let pos = *pos as u8;
+                e.id != pos
+                    && pos != e.e_slice_opposite()
+                    && e.id != e.e_slice_opposite()
+            }
+            )
+            .count();
+        let bad_edge_count = std::cmp::min(bad_edge_count, 8-bad_edge_count);
+
+        format!("{} {}e", corner_case, bad_edge_count).to_string()
     }
 
     fn should_draw_edge(&self, cube: &Cube333, pos: usize, facelet: u8) -> bool {
-        todo!()
+        let e = cube.edges.get_edges()[pos];
+        let pos = pos as u8;
+        e.id != pos
+            && pos != e.e_slice_opposite()
+            && e.id != e.e_slice_opposite()
+            && facelet != 0
     }
 
     fn should_draw_corner(&self, cube: &Cube333, pos: usize, facelet: u8) -> bool {
-        todo!()
+        let c = cube.corners.get_corners()[pos];
+        match pos {
+            0 => {
+                (cube.corners.get_corners()[7].id != c.e_slice_opposite())
+                    && facelet != 0
+            }
+            1 | 3 | 5 => {
+                let c2 = cube.corners.get_corners()[0];
+                c.id == c2.e_slice_opposite() && facelet != 0
+            }
+            _ => false,
+        }
+    }
+}
+pub struct FRFB;
+impl Solvable for FRFB {
+    fn is_move_allowed(&self, s: &str) -> PyResult<bool> {
+        let turn = Turn333::from_str(s).map_err(|_| PyValueError::new_err("Invalid move"))?;
+        match turn.face {
+            CubeFace::Front | CubeFace::Back => Ok(false),
+            _ => Ok(turn.dir == Direction::Half),
+        }
+    }
+
+    fn is_solved(&self, cube: &Cube333) -> bool {
+        let mut cube = cube.clone();
+        cube.transform(Transformation333::X);
+        FRUD.is_solved(&cube)
+    }
+
+    fn is_eligible(&self, cube: &Cube333) -> bool {
+        HTRFB.is_solved(cube)
+    }
+
+    fn case_name(&self, cube: &Cube333) -> String {
+        let mut cube = cube.clone();
+        cube.transform(Transformation333::X);
+        FRUD.case_name(&cube)
+    }
+
+    fn should_draw_edge(&self, cube: &Cube333, pos: usize, facelet: u8) -> bool {
+        let e = cube.edges.get_edges()[pos];
+        let pos = pos as u8;
+        e.id != pos
+            && pos != e.s_slice_opposite()
+            && e.id != e.s_slice_opposite()
+            && e.facelet_fb() != Some(facelet)
+    }
+
+    fn should_draw_corner(&self, cube: &Cube333, pos: usize, facelet: u8) -> bool {
+        let c = cube.corners.get_corners()[pos];
+        match pos {
+            7 => {
+                (cube.corners.get_corners()[0].id != c.e_slice_opposite())
+                    && c.facelet_ud() != facelet
+            }
+            0 | 2 | 6 => {
+                let c2 = cube.corners.get_corners()[7];
+                c.id == c2.s_slice_opposite() && c.facelet_fb() != facelet
+            }
+            _ => false,
+        }
+    }
+}
+impl Solvable for FRRL {
+    fn is_move_allowed(&self, s: &str) -> PyResult<bool> {
+        let turn = Turn333::from_str(s).map_err(|_| PyValueError::new_err("Invalid move"))?;
+        match turn.face {
+            CubeFace::Right | CubeFace::Left => Ok(false),
+            _ => Ok(turn.dir == Direction::Half),
+        }
+    }
+
+    fn is_solved(&self, cube: &Cube333) -> bool {
+        let mut cube = cube.clone();
+        cube.transform(Transformation333::Z);
+        FRUD.is_solved(&cube)
+    }
+
+    fn is_eligible(&self, cube: &Cube333) -> bool {
+        HTRRL.is_solved(cube)
+    }
+
+    fn case_name(&self, cube: &Cube333) -> String {
+        let mut cube = cube.clone();
+        cube.transform(Transformation333::Z);
+        FRUD.case_name(&cube)
+    }
+
+    fn should_draw_edge(&self, cube: &Cube333, pos: usize, facelet: u8) -> bool {
+        let e = cube.edges.get_edges()[pos];
+        let pos = pos as u8;
+        e.id != pos
+            && pos != e.m_slice_opposite()
+            && e.id != e.m_slice_opposite()
+            && e.facelet_rl() != Some(facelet)
+    }
+
+    fn should_draw_corner(&self, cube: &Cube333, pos: usize, facelet: u8) -> bool {
+        let c = cube.corners.get_corners()[pos];
+        match pos {
+            1 => {
+                (cube.corners.get_corners()[7].id != c.e_slice_opposite())
+                    && c.facelet_ud() != facelet
+            }
+            2 | 4 | 6 => {
+                let c2 = cube.corners.get_corners()[0];
+                c.id == c2.m_slice_opposite() && c.facelet_rl() != facelet
+            }
+            _ => false,
+        }
     }
 }

@@ -149,6 +149,10 @@ class CubeViz():
         self.zq_angle = 0
         self.view_angle = -math.pi / 6
 
+        self.hide_corners = False
+        self.hide_edges = False
+        self.show_all = False
+
         self.set_scramble(scramble)
 
     def set_scramble(self, scramble: str):
@@ -166,9 +170,17 @@ class CubeViz():
         self.set_colors()
 
     def should_draw_edge(self, pos_id, face):
+        if self.show_all:
+            return True
+        if self.hide_edges:
+            return False
         return self.step_info.should_draw_edge(self.cube, pos_id, face)
 
     def should_draw_corner(self, pos_id, face):
+        if self.show_all:
+            return True
+        if self.hide_corners:
+            return False
         return self.step_info.should_draw_corner(self.cube, pos_id, face)
 
     def set_colors(self):
@@ -249,6 +261,9 @@ class CubeViz():
         glEnd()
 
         glPopMatrix()
+
+    def refresh(self):
+        self.set_colors()
 
     def draw(self):
         # Clear the screen

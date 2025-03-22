@@ -17,7 +17,7 @@ logging.basicConfig(
 )
 
 from cubelib.viz import CubeViz
-from py_cubelib import Solution, SolutionStep, Algorithm, StepInfo
+from py_cubelib import Solution, SolutionStep, Algorithm, StepInfo, debug
 
 class SolutionBuilder:
     def __init__(self, kind: str, variant: str, previous: Optional["SolutionBuilder"] = None):
@@ -183,6 +183,10 @@ def htr():
     """Look for HTR"""
     _set_mode("htr", _builder.previous.variant)
 
+def fr():
+    """Look for FR"""
+    _set_mode("fr", _builder.previous.variant)
+
 
 def _set_mode(step, variant):
     global _builder
@@ -203,6 +207,22 @@ def help():
             print(f"  {name}:")
             print(f"    {func.__doc__}")
 
+def corners():
+    """Toggle visibility of corners"""
+    viz.hide_corners = not viz.hide_corners
+    viz.refresh()
+
+def edges():
+    """Toggle visibility of edges"""
+    viz.hide_edges = not viz.hide_edges
+    viz.refresh()
+
+def show_all():
+    """Show all pieces"""
+    viz.show_all = not viz.show_all
+    viz.hide_corners = viz.show_all
+    viz.hide_edges = viz.show_all
+    viz.refresh()
 
 def quit():
     """Exit"""
@@ -218,10 +238,13 @@ MOVES = {
 }
 
 
-def read_commands(stdscr):
+last_command = ""
+
+def read_commands(window):
     curses.noecho()
     curses.cbreak()
-    stdscr.keypad(True)
+    window.keypad(True)
+
 
     def execute(cmd):
         if len([m for m in cmd.upper().split(" ") if m not in MOVES]) == 0:
@@ -233,16 +256,16 @@ def read_commands(stdscr):
 
     def prompt():
         s = f"{_builder.kind}{_builder.variant}> {cmd}"
-        stdscr.move(0,0)
-        stdscr.clrtoeol()
-        stdscr.addstr(0, 0, s)
-        stdscr.move(0, len(s))
-        stdscr.refresh()
+        window.move(0, 0)
+        window.clrtoeol()
+        window.addstr(0, 0, s)
+        window.move(0, len(s))
+        window.refresh()
 
     def dump_stdout():
-        stdscr.move(1,0)
-        stdscr.clrtobot()
-        stdscr.addstr(1,0,stdout_buffer.getvalue())
+        window.move(1, 0)
+        window.clrtobot()
+        window.addstr(1, 0, stdout_buffer.getvalue())
         stdout_buffer.truncate(0)
         stdout_buffer.seek(0)
 
@@ -250,15 +273,17 @@ def read_commands(stdscr):
     sys.stdout = stdout_buffer
     sys.stderr = None
 
-    stdscr.clear()
+    window.clear()
     cmd = ""
     prompt()
     while _running:
         try:
-            key = stdscr.getch()
+            key = window.getch()
             if key == curses.KEY_ENTER or key == 10:
                 execute(cmd.strip())
                 dump_stdout()
+                global last_command
+                last_command = cmd
                 cmd = ""
                 prompt()
             elif key == curses.KEY_BACKSPACE or key == 127:
@@ -268,6 +293,10 @@ def read_commands(stdscr):
                 viz.rotate(-25)
             elif key == curses.KEY_RIGHT:
                 viz.rotate(25)
+            elif key == curses.KEY_UP:
+                dump_stdout()
+                cmd = last_command
+                prompt()
             elif chr(key) in {'x','y','z'} and cmd == "":
                 exec(f"_{chr(key)}()")
             else:
@@ -284,32 +313,25 @@ def read_commands(stdscr):
             except:
                 pass
 
-def _debug(pos,o):
-    print(viz.cube.debug(pos, o))
+def _debug():
+    print(debug(viz.cube))
 
 viz = CubeViz()
 
 if __name__ == "__main__":
-    scramble("L D L U2 F2 D F' B2 D R F2 R D2 R2 F2 L' F2 R' U2 D2")
-    eofb()
-    _append_moves("R' U F")
+    scramble("D' F' R F' B' U2 L B R B L2 B2 U R2 B2 R2 F2 D' L2 D2 F2 D2")
+    eoud()
+    _append_moves("D U2 L' B R' L' F U' R")
     save()
-    check(1)
-
-    # drrl()
-    # _append_moves("F2 R2 U B2 L' F2 R2 L' F2 R2 L2 D R2 D")
-    # save()
-    # check(1)
-    # z()
-    # htr()
-
-    drud()
-    _append_moves("U2 L F2 B2 R2 U L2 U2 D' R")
+    check()
+    drfb()
     save()
-    check(1)
+    check()
     htr()
-    # _append_moves("U2 R2 D R2 D' L2 F2 U' R2 U")
-    # save()
-    #
+    _append_moves("B R2 L2 U2 R2 F' R2 F")
+    save()
+    check()
+    fr()
+
     threading.Thread(target=lambda: curses.wrapper(read_commands)).start()
     viz.run()
