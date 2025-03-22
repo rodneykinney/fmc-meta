@@ -6,8 +6,8 @@ use pyo3::exceptions::PyValueError;
 use pyo3::FromPyObject;
 
 use cubelib::algs::Algorithm as LibAlgorithm;
-use cubelib::cube::turn::{ApplyAlgorithm, TransformableMut, TurnableMut};
-use cubelib::cube::{Corner, Cube333, CubeFace, Direction, Edge, Transformation333, Turn333};
+use cubelib::cube::turn::{ApplyAlgorithm, TransformableMut};
+use cubelib::cube::{Corner, Cube333, CubeFace, Direction, Transformation333, Turn333};
 use cubelib::defs::{NissSwitchType, StepKind as LibStepKind};
 use cubelib::solver::df_search::CancelToken;
 use cubelib::solver::solution::{
@@ -21,7 +21,7 @@ use cubelib::steps::coord::Coord;
 use cubelib::steps::dr::coords::DRUDEOFBCoord;
 use cubelib::steps::eo::coords::BadEdgeCount;
 use cubelib::steps::fr::coords::{
-    FRCPOrbitCoord, FREdgesCoord, FROrbitParityCoord, FRUDNoSliceCoord,
+    FRCPOrbitCoord, FROrbitParityCoord, FRUDNoSliceCoord,
 };
 
 #[pyclass]
@@ -391,99 +391,48 @@ fn py_cubelib(_py: Python, m: &PyModule) -> PyResult<()> {
     Ok(())
 }
 
-trait DrawableEdge {
-    fn facelet_ud(&self) -> Option<u8>;
-    fn facelet_fb(&self) -> Option<u8>;
-    fn facelet_rl(&self) -> Option<u8>;
-    fn e_slice_opposite(&self) -> u8;
-    fn s_slice_opposite(&self) -> u8;
-    fn m_slice_opposite(&self) -> u8;
-}
-impl DrawableEdge for Edge {
-    fn facelet_ud(&self) -> Option<u8> {
-        match self.id / 4 {
-            1 => None,
-            _ => Some(0),
-        }
-    }
-    fn facelet_fb(&self) -> Option<u8> {
-        match self.id / 4 {
-            1 => Some(0),
-            i if i % 2 == 0 => Some(1),
-            _ => None,
-        }
-    }
-    fn facelet_rl(&self) -> Option<u8> {
-        match self.id / 4 {
-            1 => Some(1),
-            i if i % 2 == 1 => Some(0),
-            _ => None,
-        }
-    }
-    fn e_slice_opposite(&self) -> u8 {
-        match self.id {
-            4 | 5 | 6 | 7 => self.id,
-            _ => {
-                let mut cube = Cube333::default();
-                cube.turn(Turn333::R2);
-                cube.turn(Turn333::L2);
-                cube.turn(Turn333::F2);
-                cube.turn(Turn333::B2);
-                cube.edges.get_edges()[self.id as usize].id
-            }
-        }
-    }
-    fn s_slice_opposite(&self) -> u8 {
-        match self.id {
-            1 | 3 | 9 | 11 => self.id,
-            _ => {
-                let mut cube = Cube333::default();
-                cube.turn(Turn333::R2);
-                cube.turn(Turn333::L2);
-                cube.turn(Turn333::U2);
-                cube.turn(Turn333::D2);
-                cube.edges.get_edges()[self.id as usize].id
-            }
-        }
-    }
-    fn m_slice_opposite(&self) -> u8 {
-        match self.id {
-            0 | 2 | 8 | 10 => self.id,
-            _ => {
-                let mut cube = Cube333::default();
-                cube.turn(Turn333::F2);
-                cube.turn(Turn333::B2);
-                cube.turn(Turn333::U2);
-                cube.turn(Turn333::D2);
-                cube.edges.get_edges()[self.id as usize].id
-            }
-        }
-    }
-}
+// trait DrawableEdge {
+//     fn facelet_showing_ud(&self) -> Option<u8>;
+//     fn facelet_showing_fb(&self) -> Option<u8>;
+//     fn facelet_showing_rl(&self) -> Option<u8>;
+// }
+// impl DrawableEdge for Edge {
+//     fn facelet_showing_ud(&self) -> Option<u8> {
+//         match self.id / 4 {
+//             1 => None,
+//             _ => Some(0),
+//         }
+//     }
+//     fn facelet_showing_fb(&self) -> Option<u8> {
+//         match self.id / 4 {
+//             1 => Some(0),
+//             i if i % 2 == 0 => Some(1),
+//             _ => None,
+//         }
+//     }
+//     fn facelet_showing_rl(&self) -> Option<u8> {
+//         match self.id / 4 {
+//             1 => Some(1),
+//             i if i % 2 == 1 => Some(0),
+//             _ => None,
+//         }
+//     }
+// }
 
 #[pyfunction]
 fn debug(cube: &Cube) -> String {
     let cube = cube.0;
-    let s = format!(
-        "orbit={}, parity={}, edges={}\n",
-        FRCPOrbitCoord::from(&cube.corners).val(),
-        FROrbitParityCoord::from(&cube).val(),
-        FREdgesCoord::from(&cube.edges).val()
-    );
-    let s = format!("{}\ncase={}", FRUD.case_name(&cube), s);
-    s
+    let e = cube.edges.get_edges();
+    format!("4: {} 5: {} 6: {} 7: {}",e[4].id,e[5].id,e[6].id,e[7].id)
 }
 
 trait DrawableCorner {
     fn oriented_ud(&self, pos: u8) -> bool;
     fn oriented_fb(&self, pos: u8) -> bool;
     fn oriented_rl(&self, pos: u8) -> bool;
-    fn facelet_ud(&self) -> u8;
-    fn facelet_fb(&self) -> u8;
-    fn facelet_rl(&self) -> u8;
-    fn e_slice_opposite(&self) -> u8;
-    fn s_slice_opposite(&self) -> u8;
-    fn m_slice_opposite(&self) -> u8;
+    fn facelet_showing_ud(&self) -> u8;
+    fn facelet_showing_fb(&self) -> u8;
+    fn facelet_showing_rl(&self) -> u8;
 }
 impl DrawableCorner for Corner {
     fn oriented_ud(&self, _pos: u8) -> bool {
@@ -504,27 +453,16 @@ impl DrawableCorner for Corner {
         }
     }
 
-    fn facelet_ud(&self) -> u8 {
+    fn facelet_showing_ud(&self) -> u8 {
         self.orientation
     }
 
-    fn facelet_fb(&self) -> u8 {
+    fn facelet_showing_fb(&self) -> u8 {
         (self.orientation + 2 - (self.id % 2)) % 3
     }
 
-    fn facelet_rl(&self) -> u8 {
+    fn facelet_showing_rl(&self) -> u8 {
         (self.orientation + 1 + (self.id % 2)) % 3
-    }
-    fn e_slice_opposite(&self) -> u8 {
-        7 - self.id
-    }
-    fn s_slice_opposite(&self) -> u8 {
-        // 0,3 2,1 4,7 6,5
-        4 * (self.id / 4) + 3 - (self.id % 4)
-    }
-    fn m_slice_opposite(&self) -> u8 {
-        // 0,1 2,3 4,5 6.7
-        2 * (self.id / 2) + 1 - (self.id % 2)
     }
 }
 
@@ -761,7 +699,7 @@ impl Solvable for DRUD {
     }
     fn should_draw_corner(&self, cube: &Cube333, pos: usize, facelet: u8) -> bool {
         let c = cube.corners.get_corners()[pos];
-        !c.oriented_ud(pos as u8) && facelet == c.facelet_ud()
+        !c.oriented_ud(pos as u8) && facelet == c.facelet_showing_ud()
     }
 }
 impl Solvable for DRFB {
@@ -792,7 +730,7 @@ impl Solvable for DRFB {
     }
     fn should_draw_corner(&self, cube: &Cube333, pos: usize, facelet: u8) -> bool {
         let c = cube.corners.get_corners()[pos];
-        !c.oriented_fb(pos as u8) && facelet == c.facelet_fb()
+        !c.oriented_fb(pos as u8) && facelet == c.facelet_showing_fb()
     }
 }
 impl Solvable for DRRL {
@@ -822,7 +760,7 @@ impl Solvable for DRRL {
     }
     fn should_draw_corner(&self, cube: &Cube333, pos: usize, facelet: u8) -> bool {
         let c = cube.corners.get_corners()[pos];
-        !c.oriented_rl(pos as u8) && facelet == c.facelet_rl()
+        !c.oriented_rl(pos as u8) && facelet == c.facelet_showing_rl()
     }
 }
 
@@ -852,12 +790,12 @@ impl Solvable for HTRUD {
     }
     fn should_draw_edge(&self, cube: &Cube333, pos: usize, facelet: u8) -> bool {
         let e = cube.edges.get_edges()[pos];
-        !e.oriented_ud && Some(facelet) != e.facelet_ud()
+        !e.oriented_ud && Some(facelet) != EDGE_UD_FACELETS[pos]
     }
     fn should_draw_corner(&self, cube: &Cube333, pos: usize, facelet: u8) -> bool {
         let c = cube.corners.get_corners()[pos];
-        (c.id / 4 == 1 && facelet == c.facelet_ud()) || // D sticker
-                (!c.oriented_fb(pos as u8) && facelet != c.facelet_ud())
+        (c.id / 4 == 1 && facelet == c.facelet_showing_ud()) || // D sticker
+            (!c.oriented_fb(pos as u8) && facelet != CORNER_UD_FACELETS[pos])
     }
 }
 pub struct HTRFB;
@@ -876,12 +814,12 @@ impl Solvable for HTRFB {
     }
     fn should_draw_edge(&self, cube: &Cube333, pos: usize, facelet: u8) -> bool {
         let e = cube.edges.get_edges()[pos];
-        !e.oriented_fb && Some(facelet) != e.facelet_fb()
+        !e.oriented_fb && Some(facelet) != EDGE_FB_FACELETS[pos]
     }
     fn should_draw_corner(&self, cube: &Cube333, pos: usize, facelet: u8) -> bool {
         let c = cube.corners.get_corners()[pos];
-        (vec!(0, 1, 6, 7).contains(&c.id) && facelet == c.facelet_fb()) || // B sticker
-                (!c.oriented_rl(pos as u8) && facelet != c.facelet_fb())
+        (vec!(0, 1, 6, 7).contains(&c.id) && facelet == c.facelet_showing_fb()) || // B sticker
+            (!c.oriented_rl(pos as u8) && facelet != CORNER_FB_FACELETS[pos])
     }
 }
 pub struct HTRRL;
@@ -900,12 +838,12 @@ impl Solvable for HTRRL {
     }
     fn should_draw_edge(&self, cube: &Cube333, pos: usize, facelet: u8) -> bool {
         let e = cube.edges.get_edges()[pos];
-        !e.oriented_rl && Some(facelet) != e.facelet_rl()
+        !e.oriented_rl && Some(facelet) != EDGE_RL_FACELETS[pos]
     }
     fn should_draw_corner(&self, cube: &Cube333, pos: usize, facelet: u8) -> bool {
         let c = cube.corners.get_corners()[pos];
-        (vec!(1, 2, 5, 6).contains(&c.id) && facelet == c.facelet_rl()) || // L sticker
-                (!c.oriented_ud(pos as u8) && facelet != c.facelet_fb())
+        (vec!(1, 2, 5, 6).contains(&c.id) && facelet == c.facelet_showing_rl()) || // L sticker
+            (!c.oriented_ud(pos as u8) && facelet != CORNER_RL_FACELETS[pos])
     }
 }
 pub struct FRUD;
@@ -940,40 +878,33 @@ impl Solvable for FRUD {
         let bad_edge_count = cube
             .edges
             .get_edges()
-            .into_iter()
+            .iter()
             .enumerate()
-            .filter(|(pos, e)| {
-                let pos = *pos as u8;
-                e.id != pos
-                    && pos != e.e_slice_opposite()
-                    && e.id != e.e_slice_opposite()
-            }
-            )
-            .count();
-        let bad_edge_count = std::cmp::min(bad_edge_count, 8-bad_edge_count);
+            .filter(|(pos, e)|
+                *pos as u8 != EDGE_OPPOSITE_E_SLICE[*pos]
+                    && e.id != *pos as u8
+                    && e.id != EDGE_OPPOSITE_E_SLICE[*pos])
+            .count() as u8;
+        let bad_edge_count = bad_edge_count.min(8 - bad_edge_count);
 
         format!("{} {}e", corner_case, bad_edge_count).to_string()
     }
 
     fn should_draw_edge(&self, cube: &Cube333, pos: usize, facelet: u8) -> bool {
         let e = cube.edges.get_edges()[pos];
-        let pos = pos as u8;
-        e.id != pos
-            && pos != e.e_slice_opposite()
-            && e.id != e.e_slice_opposite()
-            && facelet != 0
+        pos as u8 != EDGE_OPPOSITE_E_SLICE[pos]
+            && e.id != pos as u8
+            && e.id != EDGE_OPPOSITE_E_SLICE[pos]
+            && Some(facelet) != EDGE_UD_FACELETS[pos]
     }
 
     fn should_draw_corner(&self, cube: &Cube333, pos: usize, facelet: u8) -> bool {
         let c = cube.corners.get_corners()[pos];
-        match pos {
-            0 => {
-                (cube.corners.get_corners()[7].id != c.e_slice_opposite())
-                    && facelet != 0
-            }
-            1 | 3 | 5 => {
-                let c2 = cube.corners.get_corners()[0];
-                c.id == c2.e_slice_opposite() && facelet != 0
+        let c_opp = cube.corners.get_corners()[CORNER_OPPOSITE_E_SLICE[pos] as usize];
+        match c.id {
+            2 | 5 => {
+                c_opp.id != CORNER_OPPOSITE_E_SLICE[c.id as usize]
+                    && facelet != CORNER_UD_FACELETS[pos]
             }
             _ => false,
         }
@@ -1000,30 +931,47 @@ impl Solvable for FRFB {
     }
 
     fn case_name(&self, cube: &Cube333) -> String {
-        let mut cube = cube.clone();
-        cube.transform(Transformation333::X);
-        FRUD.case_name(&cube)
+        let mut ud_cube = cube.clone();
+        ud_cube.transform(Transformation333::X);
+        let parity = FROrbitParityCoord::from(&ud_cube).val() == 1;
+        let corner_case = match (FRCPOrbitCoord::from(&ud_cube.corners).val(), parity) {
+            (0, true) => "0c3",
+            (0, false) => "0c0",
+            (3, true) => "4c1",
+            (3, false) => "4c2",
+            (_, true) => "6c1",
+            (_, false) => "6c2",
+        };
+        let bad_edge_count = cube
+            .edges
+            .get_edges()
+            .iter()
+            .enumerate()
+            .filter(|(pos, e)|
+                *pos as u8 != EDGE_OPPOSITE_S_SLICE[*pos]
+                    && e.id != *pos as u8
+                    && e.id != EDGE_OPPOSITE_S_SLICE[*pos])
+            .count() as u8;
+        let bad_edge_count = bad_edge_count.min(8 - bad_edge_count);
+
+        format!("{} {}e", corner_case, bad_edge_count).to_string()
     }
 
     fn should_draw_edge(&self, cube: &Cube333, pos: usize, facelet: u8) -> bool {
         let e = cube.edges.get_edges()[pos];
-        let pos = pos as u8;
-        e.id != pos
-            && pos != e.s_slice_opposite()
-            && e.id != e.s_slice_opposite()
-            && e.facelet_fb() != Some(facelet)
+        pos as u8 != EDGE_OPPOSITE_S_SLICE[pos]
+            && e.id != pos as u8
+            && e.id != EDGE_OPPOSITE_S_SLICE[pos]
+            && Some(facelet) != EDGE_FB_FACELETS[pos]
     }
 
     fn should_draw_corner(&self, cube: &Cube333, pos: usize, facelet: u8) -> bool {
         let c = cube.corners.get_corners()[pos];
-        match pos {
-            7 => {
-                (cube.corners.get_corners()[0].id != c.e_slice_opposite())
-                    && c.facelet_ud() != facelet
-            }
-            0 | 2 | 6 => {
-                let c2 = cube.corners.get_corners()[7];
-                c.id == c2.s_slice_opposite() && c.facelet_fb() != facelet
+        let c_opp = cube.corners.get_corners()[CORNER_OPPOSITE_S_SLICE[pos] as usize];
+        match c.id {
+            1 | 2 => {
+                c_opp.id != CORNER_OPPOSITE_S_SLICE[c.id as usize]
+                    && facelet != CORNER_FB_FACELETS[pos]
             }
             _ => false,
         }
@@ -1049,32 +997,103 @@ impl Solvable for FRRL {
     }
 
     fn case_name(&self, cube: &Cube333) -> String {
-        let mut cube = cube.clone();
-        cube.transform(Transformation333::Z);
-        FRUD.case_name(&cube)
+        let mut ud_cube = cube.clone();
+        ud_cube.transform(Transformation333::X);
+        let parity = FROrbitParityCoord::from(&ud_cube).val() == 1;
+        let corner_case = match (FRCPOrbitCoord::from(&ud_cube.corners).val(), parity) {
+            (0, true) => "0c3",
+            (0, false) => "0c0",
+            (3, true) => "4c1",
+            (3, false) => "4c2",
+            (_, true) => "6c1",
+            (_, false) => "6c2",
+        };
+        let bad_edge_count = cube
+            .edges
+            .get_edges()
+            .iter()
+            .enumerate()
+            .filter(|(pos, e)|
+                *pos as u8 != EDGE_OPPOSITE_M_SLICE[*pos]
+                    && e.id != *pos as u8
+                    && e.id != EDGE_OPPOSITE_M_SLICE[*pos])
+            .count() as u8;
+        let bad_edge_count = bad_edge_count.min(8 - bad_edge_count);
+
+        format!("{} {}e", corner_case, bad_edge_count).to_string()
     }
 
     fn should_draw_edge(&self, cube: &Cube333, pos: usize, facelet: u8) -> bool {
         let e = cube.edges.get_edges()[pos];
-        let pos = pos as u8;
-        e.id != pos
-            && pos != e.m_slice_opposite()
-            && e.id != e.m_slice_opposite()
-            && e.facelet_rl() != Some(facelet)
+        pos as u8 != EDGE_OPPOSITE_M_SLICE[pos]
+            && e.id != pos as u8
+            && e.id != EDGE_OPPOSITE_M_SLICE[pos]
+            && Some(facelet) != EDGE_RL_FACELETS[pos]
     }
 
     fn should_draw_corner(&self, cube: &Cube333, pos: usize, facelet: u8) -> bool {
         let c = cube.corners.get_corners()[pos];
-        match pos {
-            1 => {
-                (cube.corners.get_corners()[7].id != c.e_slice_opposite())
-                    && c.facelet_ud() != facelet
-            }
-            2 | 4 | 6 => {
-                let c2 = cube.corners.get_corners()[0];
-                c.id == c2.m_slice_opposite() && c.facelet_rl() != facelet
+        let c_opp = cube.corners.get_corners()[CORNER_OPPOSITE_M_SLICE[pos] as usize];
+        match c.id {
+            2 | 3 => {
+                c_opp.id != CORNER_OPPOSITE_M_SLICE[c.id as usize]
+                    && facelet != CORNER_UD_FACELETS[pos]
             }
             _ => false,
         }
     }
 }
+
+const EDGE_UD_FACELETS: [Option<u8>; 12] = [
+    Some(0),
+    Some(0),
+    Some(0),
+    Some(0),
+    None,
+    None,
+    None,
+    None,
+    Some(0),
+    Some(0),
+    Some(0),
+    Some(0),
+];
+const EDGE_FB_FACELETS: [Option<u8>; 12] = [
+    Some(1),
+    None,
+    Some(1),
+    None,
+    Some(0),
+    Some(0),
+    Some(0),
+    Some(0),
+    Some(1),
+    None,
+    Some(1),
+    None,
+];
+const EDGE_RL_FACELETS: [Option<u8>; 12] = [
+    None,
+    Some(1),
+    None,
+    Some(1),
+    Some(0),
+    Some(0),
+    Some(0),
+    Some(0),
+    None,
+    Some(1),
+    None,
+    Some(1),
+];
+const CORNER_UD_FACELETS: [u8; 8] = [0, 0, 0, 0, 0, 0, 0, 0];
+const CORNER_FB_FACELETS: [u8; 8] = [2, 1, 2, 1, 2, 1, 2, 1];
+const CORNER_RL_FACELETS: [u8; 8] = [1, 2, 1, 2, 1, 2, 1, 2];
+
+const EDGE_OPPOSITE_E_SLICE: [u8; 12] = [6, 5, 4, 11, 4, 5, 6, 7, 2, 1, 0, 3];
+const EDGE_OPPOSITE_S_SLICE: [u8; 12] = [2, 1, 0, 3, 6, 7, 4, 5, 10, 9, 8, 11];
+const EDGE_OPPOSITE_M_SLICE: [u8; 12] = [0, 3, 2, 1, 5, 4, 7, 6, 8, 11, 10, 9];
+
+const CORNER_OPPOSITE_E_SLICE: [u8; 8] = [7, 6, 5, 4, 3, 2, 1, 0];
+const CORNER_OPPOSITE_S_SLICE: [u8; 8] = [3, 2, 1, 0, 7, 6, 5, 4];
+const CORNER_OPPOSITE_M_SLICE: [u8; 8] = [1, 0, 3, 2, 5, 4, 7, 6];
