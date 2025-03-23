@@ -9,6 +9,7 @@ from OpenGL.GLU import *
 import math
 import numpy as np
 
+from cubelib.solution_builder import SolutionBuilder
 from py_cubelib import (Cube, Solution, StepInfo)
 import pyquaternion
 
@@ -153,37 +154,30 @@ class CubeViz():
         self.hide_edges = False
         self.show_all = False
 
-        self.set_scramble(scramble)
+        self.cube = Cube("")
+        self.builder = SolutionBuilder()
 
     def set_scramble(self, scramble: str):
         logging.debug(f"Setting scramble to {scramble}")
         self.scramble = scramble
-        self.set_solution(Solution())
-
-    def set_solution(self, solution: Solution):
         self.cube = Cube(self.scramble)
-        self.solution = solution
-        self.cube.apply(solution)
-        self.step_info = StepInfo("", "")
-        if self.solution.steps:
-            self.step_info = StepInfo(self.solution.steps[-1].kind, self.solution.steps[-1].variant)
-        self.set_colors()
+        self.refresh()
 
     def should_draw_edge(self, pos_id, face):
         if self.show_all:
             return True
         if self.hide_edges:
             return False
-        return self.step_info.should_draw_edge(self.cube, pos_id, face)
+        return self.builder.step_info.should_draw_edge(self.cube, pos_id, face)
 
     def should_draw_corner(self, pos_id, face):
         if self.show_all:
             return True
         if self.hide_corners:
             return False
-        return self.step_info.should_draw_corner(self.cube, pos_id, face)
+        return self.builder.step_info.should_draw_corner(self.cube, pos_id, face)
 
-    def set_colors(self):
+    def refresh(self):
         self.colors = [(1, 1, 1, .2)] * 54
         self.colors[4] = WHITE + (self.opacity,)
         self.colors[13] = ORANGE + (self.opacity,)
@@ -213,7 +207,6 @@ class CubeViz():
                                                                    (side + flipped) % 2] + (
                                                                    self.opacity,)
 
-        pygame.display.flip()
 
     def draw_facelet(self, x, y, z, color, axis):
         glPushMatrix()
@@ -262,8 +255,12 @@ class CubeViz():
 
         glPopMatrix()
 
-    def refresh(self):
-        self.set_colors()
+    def update(self, builder: SolutionBuilder):
+        self.builder = builder
+        self.solution = builder.build()
+        self.cube = Cube(self.scramble)
+        self.cube.apply(self.solution)
+        self.refresh()
 
     def draw(self):
         # Clear the screen
@@ -313,8 +310,10 @@ class CubeViz():
 
         glPopMatrix()
 
+        solution = self.solution
+
         # Draw text
-        if not self.solution.steps:
+        if not solution.steps:
             return
         font = pygame.font.SysFont('Arial', 22)
 
@@ -332,19 +331,19 @@ class CubeViz():
 
         write(self.scramble, 10, self.display_height, top_justify=True)
 
-        n = len(self.solution.steps)
+        n = len(solution.steps)
         y = 10
         y += write(
-            f"{self.step_info.kind}{self.step_info.variant} - {self.solution.steps[n - 1].alg}",
+            f"{self.builder.step_info.kind}{self.builder.step_info.variant} - {solution.steps[n - 1].alg}",
             10, y)
         for i in range(2, n + 1):
             y += write(
-                f"{self.solution.steps[n - i].alg} // {self.solution.steps[n - i].kind}{self.solution.steps[n - i].variant}",
+                f"{solution.steps[n - i].alg} // {solution.steps[n - i].kind}{solution.steps[n - i].variant}",
                 10, y)
 
-        if self.solution.steps:
+        if solution.steps:
             write(
-                self.step_info.case_name(self.cube),
+                self.builder.step_info.case_name(self.cube),
                 self.display_width - 10, 10, right_justify=True
             )
 

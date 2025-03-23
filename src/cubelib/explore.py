@@ -1,4 +1,3 @@
-from typing import Optional, Dict, List, Tuple
 import io
 import threading
 import sys
@@ -6,7 +5,6 @@ import traceback
 import logging
 import math
 import curses
-from collections import defaultdict
 from builtins import (list as llist)
 import inspect
 
@@ -17,9 +15,12 @@ logging.basicConfig(
 )
 
 from cubelib.viz import CubeViz
-from py_cubelib import Solution, SolutionStep, Algorithm, StepInfo, debug
+import cubelib.solution_builder
+from py_cubelib import debug, StepInfo
 
-DEFAULT_NEXT_STEPS = {
+_builder = cubelib.solution_builder._builder
+
+NEXT_STEPS_AFTER_SAVE = {
     ("dr", "ud"): ("htr", "ud"),
     ("dr", "rl"): ("htr", "rl"),
     ("dr", "fb"): ("htr", "fb"),
@@ -28,114 +29,51 @@ DEFAULT_NEXT_STEPS = {
     ("htr", "fb"): ("fr", "fb"),
 }
 
+NEXT_STEPS = {
+    ("eo", "ud"): ("dr", "fb"),
+    ("eo", "rl"): ("dr", "ud"),
+    ("eo", "fb"): ("dr", "ud"),
+}
 
-class SolutionBuilder:
-    def __init__(self, kind: str, variant: str, previous: Optional["SolutionBuilder"] = None):
-        self.kind = kind
-        self.variant = variant
-        self.step_info = StepInfo(kind, variant)
-        self.previous = previous
-        self.moves = []
 
-    def add_move(self, move: str):
-        if self.moves and self.moves[-1][0] == move[0]:
-            suffixes = {self.moves[-1][1:], move[1:]}
-            if suffixes == {"", ""} or suffixes == {"'", "'"}:
-                self.moves[-1] = f"{move[0]}2"
-            elif suffixes == {"'", ""} or suffixes == {"2", "2"}:
-                self.moves.pop()
-            elif suffixes == {"", "2"}:
-                self.moves[-1] = f"{move[0][0]}'"
-            elif suffixes == {"'", "2"}:
-                self.moves[-1] = move[0][:1]
-            else:
-                raise ValueError(f"Could not combine {move} with {self.moves[-1]}")
-        else:
-            self.moves.append(move)
-
-    def allows_move(self, move: str) -> bool:
-        if self.previous is None:
-            return True
-        return self.previous.step_info.is_move_allowed(move)
-
-    def all_moves(self):
-        if self.previous is not None:
-            return self.previous.all_moves() + self.moves
-        return self.moves
-
-    def build(self) -> Solution:
-        sol = Solution()
-        if self.previous is not None:
-            sol = self.previous.build()
-        sol.append(SolutionStep(kind=self.kind, variant=self.variant, alg=" ".join(self.moves),
-                                comment=""))
-        return sol
 
 
 _running = True
-# Nested dict of (kind,variant) => SolutionBuilder
-_steps: Dict[Tuple[str, str], List[SolutionBuilder]] = defaultdict(llist)
-# The algorithm currently being built
-_builder = SolutionBuilder("", "")
 
 
 def scramble(str=""):
     """Reset the cube to the given scramble"""
-    global _builder
     viz.set_scramble(str)
-    _builder = SolutionBuilder("", "")
-    viz.set_solution(_builder.build())
+    _builder.clear()
 
 
 def check(i=0):
     """Load and check the numbered algorithm"""
-    global _builder
-    if not _steps.get((_builder.kind, _builder.variant), list()):
-        return
-    b = _steps[(_builder.kind, _builder.variant)][i - 1]
-    kind, variant = "",""
-    # next = DEFAULT_NEXT_STEPS.get((_builder.kind, _builder.variant))
-    # if next is not None:
-    #     kind,variant = next
-    _builder = SolutionBuilder(
-        kind=kind,
-        variant=variant,
-        previous=b
-    )
-    viz.set_solution(_builder.build())
+    _builder.load(i)
+    key = (_builder.kind, _builder.variant)
+    next = NEXT_STEPS.get(key, NEXT_STEPS_AFTER_SAVE.get(key))
+    if next:
+        _builder.advance_to(*next)
 
 
 def back():
     """Go back to the previous step"""
-    global _builder
-    prev = _builder.previous
-    if prev is not None:
-        _builder = SolutionBuilder(prev.kind, prev.variant, prev.previous)
-        viz.set_solution(_builder.build())
-    else:
-        _builder = SolutionBuilder("", "")
-        viz.set_solution(_builder.build())
-
+    _builder.back()
 
 def reset():
     """Reset the cube to the beginning of the current step"""
-    global _builder
-    _builder = SolutionBuilder(_builder.kind, _builder.variant, previous=_builder.previous)
-    viz.set_solution(_builder.build())
+    _builder.reset()
 
 
 def save():
     """Save this algorithm and start a new one"""
-    global _builder
     if _builder.step_info.is_solved(viz.cube):
-        _steps[(_builder.kind, _builder.variant)].append(_builder)
-        _builder = SolutionBuilder(_builder.kind, _builder.variant, previous=_builder.previous)
-        viz.set_solution(_builder.build())
-        reset()
-        # if (_builder.kind, _builder.variant) in DEFAULT_NEXT_STEPS:
-        #     check()
-        # else:
-        #     reset()
+        _builder.save()
+        next_step =  NEXT_STEPS_AFTER_SAVE.get((_builder.kind, _builder.variant))
+        if next_step:
+            _builder.advance_to(*next_step)
+        else:
+            _builder.reset()
     else:
         print(f"Cube is not in {_builder.kind}{_builder.variant}")
 
@@ -143,18 +81,14 @@ def save():
 def list():
     """List the saved algorithms for the current step"""
     print(f"{_builder.kind.upper()}{_builder.variant.upper()}: ")
-    for (i, b) in enumerate(_steps[(_builder.kind, _builder.variant)]):
+    for (i, b) in enumerate(_builder.saved_solutions_of_same_step()):
         s = b.all_moves()
         print(f"  {i + 1}: {' '.join(s)} ({len(s)})")
 
 
 def _append_moves(moves):
-    for move in moves.split(" "):
-        if _builder.allows_move(move):
-            _builder.add_move(move)
-            viz.set_solution(_builder.build())
-        else:
-            print(f"{move} not allowed after {_builder.previous.kind}{_builder.previous.variant}")
+    if not _builder.append_moves(moves.split(" ")):
+        print(f"{moves} not allowed after {_builder.previous.kind}{_builder.previous.variant}")
 
 
 def _set_orientation(x, y, z):
@@ -181,6 +115,7 @@ def eofb():
     _set_mode("eo", "fb")
 
 
+
 def eorl():
     _set_orientation(0,0, -math.pi/2)
     """Look for EO on RL axis"""
@@ -188,27 +123,27 @@ def eorl():
 
 
 def eoud():
-    _set_orientation(-math.pi/2,0,0)
+    _set_orientation(math.pi/2,0,0)
     """Look for EO on UD axis"""
     _set_mode("eo", "ud")
 
 
 def drud():
-    _set_orientation(0,0,0)
     """Look for DR on UD axis"""
-    _set_mode("dr", "ud")
+    if _set_mode("dr", "ud"):
+        _set_orientation(0,0,0)
 
 
 def drrl():
     """Look for DR on RL axis"""
-    _set_orientation(0,-math.pi/2,0)
-    _set_mode("dr", "rl")
+    if _set_mode("dr", "rl"):
+        _set_orientation(0,-math.pi/2,0)
 
 
 def drfb():
     """Look for DR on FB axis"""
-    _set_orientation(math.pi/2,0,0)
-    _set_mode("dr", "fb")
+    if _set_mode("dr", "fb"):
+        _set_orientation(math.pi/2,0,0)
 
 
 def htr():
@@ -221,18 +156,16 @@ def fr():
     _set_mode("fr", _builder.previous.variant)
 
 
-def _set_mode(kind, variant):
-    global _builder
-    if _builder.step_info.is_solved(viz.cube):
-        _builder.kind = kind
-        _builder.variant = variant
-        _builder.step_info = StepInfo(kind, variant)
-        viz.set_solution(_builder.build())
-    elif _builder.step_info.is_eligible(viz.cube):
-        _builder = SolutionBuilder(kind, variant, previous=_builder.previous)
-        viz.set_solution(_builder.build())
+def _set_mode(kind, variant) -> bool:
+    step_info = StepInfo(kind, variant)
+    if step_info.is_eligible(viz.cube):
+        _builder.advance_to(kind, variant)
+        while step_info.is_solved(viz.cube) and _builder.previous:
+            _builder.advance_to(kind, variant)
+        return True
     else:
         print(f"Cube is not eligible for {kind}{variant}")
+        return False
 
 
 def help():
@@ -356,12 +289,20 @@ def read_commands(window):
 
 
 def _debug():
-    print(debug(viz.cube))
+    print(f"{_builder.build()}")
 
 
 viz = CubeViz()
 
+def update(builder):
+    global _builder
+    _builder = builder
+    viz.update(builder)
+
 if __name__ == "__main__":
+    _builder.listener = update
+    threading.Thread(target=lambda: curses.wrapper(read_commands)).start()
+
     scramble("U L' B' U2 R2 B2 D R L F' R2 D2 B2 R2 U2 F2 D' R2 U' L2 U B2 U2")
     # eofb()
     # _append_moves("F' D2 R L F")
@@ -379,5 +320,4 @@ if __name__ == "__main__":
     # check()
     # fr()
 
-    threading.Thread(target=lambda: curses.wrapper(read_commands)).start()
     viz.run()

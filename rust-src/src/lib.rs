@@ -529,7 +529,6 @@ impl Solvable for SCRAMBLED {
 }
 
 pub struct EOFB;
-pub struct EORL;
 pub struct EOUD;
 impl Solvable for EOFB {
     fn is_move_allowed(&self, s: &str) -> PyResult<bool> {
@@ -557,6 +556,7 @@ impl Solvable for EOFB {
         false
     }
 }
+pub struct EORL;
 impl Solvable for EORL {
     fn is_move_allowed(&self, s: &str) -> PyResult<bool> {
         let turn = Turn333::from_str(s).map_err(|_| PyValueError::new_err("Invalid move"))?;
@@ -609,9 +609,6 @@ impl Solvable for EOUD {
     }
 }
 pub struct DRUD;
-pub struct DRRL;
-pub struct DRFB;
-
 impl Solvable for DRUD {
     fn is_move_allowed(&self, s: &str) -> PyResult<bool> {
         let turn = Turn333::from_str(s).map_err(|_| PyValueError::new_err("Invalid move"))?;
@@ -650,6 +647,8 @@ impl Solvable for DRUD {
         !c.oriented_ud(pos as u8) && facelet == c.facelet_showing_ud()
     }
 }
+
+pub struct DRFB;
 impl Solvable for DRFB {
     fn is_move_allowed(&self, s: &str) -> PyResult<bool> {
         let turn = Turn333::from_str(s).map_err(|_| PyValueError::new_err("Invalid move"))?;
@@ -681,6 +680,7 @@ impl Solvable for DRFB {
         !c.oriented_fb(pos as u8) && facelet == c.facelet_showing_fb()
     }
 }
+struct DRRL;
 impl Solvable for DRRL {
     fn is_move_allowed(&self, s: &str) -> PyResult<bool> {
         let turn = Turn333::from_str(s).map_err(|_| PyValueError::new_err("Invalid move"))?;
@@ -985,7 +985,7 @@ impl Solvable for FRRL {
         match c.id {
             2 | 3 => {
                 c_opp.id != CORNER_OPPOSITE_M_SLICE[c.id as usize]
-                    && facelet != CORNER_UD_FACELETS[pos]
+                    && facelet != CORNER_RL_FACELETS[pos]
             }
             _ => false,
         }
@@ -1025,10 +1025,10 @@ const EDGE_RL_FACELETS: [Option<u8>; 12] = [
     Some(1),
     None,
     Some(1),
-    Some(0),
-    Some(0),
-    Some(0),
-    Some(0),
+    Some(1),
+    Some(1),
+    Some(1),
+    Some(1),
     None,
     Some(1),
     None,
