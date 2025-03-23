@@ -20,6 +20,7 @@ import cubelib.solution_builder
 from py_cubelib import debug, StepInfo, scramble as gen_scramble
 
 _builder = cubelib.solution_builder._builder
+_inverse = False
 
 NEXT_STEPS_AFTER_SAVE = {
     ("dr", "ud"): ("htr", "ud"),
@@ -83,12 +84,19 @@ def list():
     """List the saved algorithms for the current step"""
     print(f"{_builder.kind.upper()}{_builder.variant.upper()}: ")
     for (i, b) in enumerate(_builder.saved_solutions_of_same_step()):
-        s = b.all_moves()
-        print(f"  {i + 1}: {' '.join(s)} ({len(s)})")
+        alg = b.full_alg()
+        print(f"  {i + 1}: {alg} ({alg.len()})")
 
+
+def niss():
+    """Switch between normal and inverse scramble"""
+    global _inverse
+    _inverse = not _inverse
+    viz.set_inverse(_inverse)
+    viz.update(_builder)
 
 def _append_moves(moves):
-    if not _builder.append_moves(moves.split(" ")):
+    if not _builder.append_moves(moves.split(" "), _inverse):
         print(f"{moves} not allowed after {_builder.previous.kind}{_builder.previous.variant}")
 
 
@@ -159,6 +167,8 @@ def fr():
 def _set_mode(kind, variant) -> bool:
     step_info = StepInfo(kind, variant)
     if step_info.is_eligible(viz.cube):
+        if not step_info.is_solved(viz.cube):
+            _builder.back()
         _builder.advance_to(kind, variant)
         while step_info.is_solved(viz.cube) and _builder.previous:
             _builder.back()
@@ -306,13 +316,20 @@ if __name__ == "__main__":
     threading.Thread(target=lambda: curses.wrapper(read_commands)).start()
 
     scramble("U L' B' U2 R2 B2 D R L F' R2 D2 B2 R2 U2 F2 D' R2 U' L2 U B2 U2")
-    eofb()
-    _append_moves("F' U2 R L B")
-    drrl()
-    _append_moves("U' L' D2 F2 R' D' R2 D")
-    save()
-    _append_moves("R' F2 B2 D2 R B2 R")
-    save()
+    # eofb()
+    # niss(); _append_moves("B") ; niss() ;_append_moves("F' L' F") ; save()
+    # niss(); _append_moves("B F L F") ; niss() ; save()
+    # _append_moves("f") ; niss() ; _append_moves("D2 L B") ; niss() ; save()
+    # niss(); _append_moves("B") ; niss() ;_append_moves("U2 B L B") ; save()
+    # niss(); _append_moves("B") ; niss() ;_append_moves("D2 F R F") ; save()
+
+# eofb()
+    # _append_moves("F' U2 R L B")
+    # drrl()
+    # _append_moves("U' L' D2 F2 R' D' R2 D")
+    # save()
+    # _append_moves("R' F2 B2 D2 R B2 R")
+    # save()
 
     # drfb()
     # save()

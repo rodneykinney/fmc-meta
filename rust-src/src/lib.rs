@@ -1,6 +1,6 @@
-mod fr;
-mod eo;
 mod dr;
+mod eo;
+mod fr;
 mod htr;
 
 use pyo3::prelude::*;
@@ -11,7 +11,7 @@ use pyo3::exceptions::PyValueError;
 use pyo3::FromPyObject;
 
 use cubelib::algs::Algorithm as LibAlgorithm;
-use cubelib::cube::turn::ApplyAlgorithm;
+use cubelib::cube::turn::{ApplyAlgorithm, Direction, Invertible, InvertibleMut};
 use cubelib::cube::{Corner, Cube333, Turn333};
 use cubelib::defs::{NissSwitchType, StepKind as LibStepKind};
 use cubelib::solver::df_search::CancelToken;
@@ -215,8 +215,90 @@ impl Algorithm {
         Ok(Algorithm(alg))
     }
 
+    fn is_empty(&self) -> bool {
+        self.0.normal_moves.is_empty() && self.0.inverse_moves.is_empty()
+    }
+
+    fn len(&self) -> usize {
+        self.0.normal_moves.len() + self.0.inverse_moves.len()
+    }
+
+    fn append(&self, s: &str, inverse: bool) -> PyResult<Algorithm> {
+        let turn = Turn333::from_str(s).map_err(|_| PyValueError::new_err("Invalid move"))?;
+        let alg = append_move(&self.0, turn, inverse);
+        Ok(Algorithm(alg))
+    }
+
+    fn merge(&self, other: &Algorithm) -> Algorithm {
+        let mut alg = self.0.clone();
+        for turn in other.0.normal_moves.iter() {
+            alg = append_move(&alg, *turn, false);
+        }
+        for turn in other.0.inverse_moves.iter() {
+            alg = append_move(&alg, *turn, true);
+        }
+
+        alg.normal_moves.extend(other.0.normal_moves.clone());
+        alg.inverse_moves.extend(other.0.inverse_moves.clone());
+        Algorithm(alg)
+    }
+
     fn __repr__(&self) -> String {
         format!("{}", self.0)
+    }
+}
+
+fn append_move(alg: &LibAlgorithm, turn: Turn333, inverse: bool) -> LibAlgorithm {
+    let mut new_moves = if inverse {
+        alg.inverse_moves.clone()
+    } else {
+        alg.normal_moves.clone()
+    };
+    let mut cancels = false;
+    for i in (0..new_moves.len()).rev() {
+        let last_move = new_moves[i];
+        if last_move == turn.invert() {
+            cancels = true;
+            new_moves.remove(i);
+            break;
+        } else if last_move.face == turn.face {
+            match (last_move.dir, turn.dir) {
+                (Direction::Half, _) => {
+                    cancels = true;
+                    new_moves[i] = turn.invert();
+                    break;
+                }
+                (_, Direction::Half) => {
+                    cancels = true;
+                    new_moves[i] = last_move.invert();
+                    break;
+                }
+                (_, _) => {
+                    cancels = true;
+                    new_moves[i] = Turn333 {
+                        face: turn.face,
+                        dir: Direction::Half,
+                    };
+                    break;
+                }
+            }
+        } else if last_move.face != turn.face.opposite() {
+            break;
+        }
+    }
+    if !cancels {
+        new_moves.push(turn);
+    }
+    if inverse {
+        LibAlgorithm {
+            normal_moves: alg.normal_moves.clone(),
+            inverse_moves: new_moves,
+        }
+    } else {
+        LibAlgorithm {
+            normal_moves: new_moves,
+            inverse_moves: alg.inverse_moves.clone(),
+        }
     }
 }
 
@@ -264,6 +346,10 @@ impl Cube {
 
     fn apply(&mut self, solution: &Solution) {
         self.0.apply_solution(&solution.0);
+    }
+
+    fn invert(&mut self) {
+        self.0.invert()
     }
 }
 
@@ -336,12 +422,14 @@ fn scramble() -> PyResult<String> {
     let cube = Cube333::random(&mut rand::rng());
 
     let steps = vec![
-        EOStep::builder().max_length(7).build(),
-        DRStep::builder().build(),
-        HTRStep::builder().build(),
-        HTRFinishStep::builder().build(),
+        EOStep::builder().niss(NissSwitchType::Never).build(),
+        DRStep::builder().niss(NissSwitchType::Never).build(),
+        HTRStep::builder().max_absolute_length(30).niss(NissSwitchType::Never).build(),
+        HTRFinishStep::builder().max_absolute_length(30).build(),
     ];
-    let steps = StepGroup::sequential(steps);
+    let mut steps = StepGroup::sequential(steps);
+    steps.apply_step_limit(40);
+    // let steps = EOStep::builder().max_length(7).build();
 
     let mut worker = steps.into_worker(cube);
 
@@ -350,7 +438,6 @@ fn scramble() -> PyResult<String> {
     let alg = Into::<LibAlgorithm>::into(solution);
     Ok(format!("{}", alg))
 }
-
 
 // The Python module definition
 #[pymodule]
@@ -401,7 +488,10 @@ fn py_cubelib(_py: Python, m: &PyModule) -> PyResult<()> {
 fn debug(cube: &Cube) -> String {
     let cube = cube.0;
     let e = cube.edges.get_edges();
-    format!("4: {} 5: {} 6: {} 7: {}",e[4].id,e[5].id,e[6].id,e[7].id)
+    format!(
+        "4: {} 5: {} 6: {} 7: {}",
+        e[4].id, e[5].id, e[6].id, e[7].id
+    )
 }
 
 trait DrawableCorner {
@@ -558,7 +648,6 @@ impl Solvable for SCRAMBLED {
     }
 }
 
-
 const EDGE_UD_FACELETS: [Option<u8>; 12] = [
     Some(0),
     Some(0),
@@ -612,3 +701,45 @@ const EDGE_OPPOSITE_M_SLICE: [u8; 12] = [0, 3, 2, 1, 5, 4, 7, 6, 8, 11, 10, 9];
 const CORNER_OPPOSITE_E_SLICE: [u8; 8] = [7, 6, 5, 4, 3, 2, 1, 0];
 const CORNER_OPPOSITE_S_SLICE: [u8; 8] = [3, 2, 1, 0, 7, 6, 5, 4];
 const CORNER_OPPOSITE_M_SLICE: [u8; 8] = [1, 0, 3, 2, 5, 4, 7, 6];
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn algorithm_append() {
+        let alg = Algorithm::new("").unwrap();
+        let alg = alg.append("F", false).unwrap();
+        assert!(format!("{}", alg.0) == "F");
+        let alg = alg.append("F'", false).unwrap();
+        assert!(format!("{}", alg.0) == "");
+        let alg = alg.append("F", false).unwrap();
+        let alg = alg.append("F", false).unwrap();
+        assert!(format!("{}", alg.0) == "F2");
+        let alg = alg.append("B2", false).unwrap();
+        assert!(format!("{}", alg.0) == "F2 B2");
+        let alg = alg.append("F", false).unwrap();
+        assert!(format!("{}", alg.0) == "F' B2");
+
+        let alg = Algorithm::new("").unwrap();
+        let alg = alg.append("F", true).unwrap();
+        assert!(format!("{}", alg.0) == "(F)");
+        let alg = alg.append("F'", true).unwrap();
+        assert!(format!("{}", alg.0) == "");
+        let alg = alg.append("F", true).unwrap();
+        let alg = alg.append("F", true).unwrap();
+        assert!(format!("{}", alg.0) == "(F2)");
+        let alg = alg.append("B2", true).unwrap();
+        assert!(format!("{}", alg.0) == "(F2 B2)");
+        let alg = alg.append("F", true).unwrap();
+        assert!(format!("{}", alg.0) == "(F' B2)");
+        let alg = alg.append("F", false).unwrap();
+        assert!(format!("{}", alg.0) == "F (F' B2)");
+    }
+
+    #[ignore]
+    fn scramble_gen() {
+        let s = scramble().unwrap();
+        assert!(s.len() > 0);
+    }
+}

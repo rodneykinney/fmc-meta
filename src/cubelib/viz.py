@@ -156,6 +156,7 @@ class CubeViz():
 
         self.cube = Cube("")
         self.builder = SolutionBuilder()
+        self.inverse = False
 
     def set_scramble(self, scramble: str):
         logging.debug(f"Setting scramble to {scramble}")
@@ -255,11 +256,16 @@ class CubeViz():
 
         glPopMatrix()
 
+    def set_inverse(self, inverse: bool):
+        self.inverse = inverse
+
     def update(self, builder: SolutionBuilder):
         self.builder = builder
         self.solution = builder.build()
         self.cube = Cube(self.scramble)
         self.cube.apply(self.solution)
+        if self.inverse:
+            self.cube.invert()
         self.refresh()
 
     def draw(self):
@@ -334,7 +340,7 @@ class CubeViz():
         n = len(solution.steps)
         y = 10
         y += write(
-            f"{self.builder.step_info.kind}{self.builder.step_info.variant} - {solution.steps[n - 1].alg}",
+            f"{self.builder.step_info.kind}{self.builder.step_info.variant} - {solution.steps[n - 1].alg}{' (' if self.inverse else ''}",
             10, y)
         for i in range(2, n + 1):
             y += write(

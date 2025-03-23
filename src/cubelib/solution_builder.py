@@ -16,43 +16,30 @@ class SolutionBuilder:
         self.variant = variant
         self.step_info = StepInfo(kind, variant)
         self.previous = previous
-        self.moves = []
         self.listener = listener
+        self.alg = Algorithm("")
 
-    def append_moves(self, moves: List[str]) -> bool:
+    def append_moves(self, moves: List[str], inverse: bool) -> bool:
         if not all(self.allows_move(m) for m in moves):
             return False
 
         for m in moves:
-            self._add_move(m)
+            self._add_move(m, inverse)
         self.notify()
         return True
 
-    def _add_move(self, move: str):
-        if self.moves and self.moves[-1][0] == move[0]:
-            suffixes = {self.moves[-1][1:], move[1:]}
-            if suffixes == {"", ""} or suffixes == {"'", "'"}:
-                self.moves[-1] = f"{move[0]}2"
-            elif suffixes == {"'", ""} or suffixes == {"2", "2"}:
-                self.moves.pop()
-            elif suffixes == {"", "2"}:
-                self.moves[-1] = f"{move[0][0]}'"
-            elif suffixes == {"'", "2"}:
-                self.moves[-1] = move[0][:1]
-            else:
-                raise ValueError(f"Could not combine {move} with {self.moves[-1]}")
-        else:
-            self.moves.append(move)
+    def _add_move(self, move: str, inverse: bool):
+        self.alg = self.alg.append(move, inverse)
 
     def allows_move(self, move: str) -> bool:
         if self.previous is None:
             return True
         return self.previous.step_info.is_move_allowed(move)
 
-    def all_moves(self):
+    def full_alg(self):
         if self.previous is not None:
-            return self.previous.all_moves() + self.moves
-        return self.moves
+            return self.previous.full_alg().merge(self.alg)
+        return self.alg
 
     def build(self) -> Solution:
         sol = Solution()
@@ -61,7 +48,7 @@ class SolutionBuilder:
         sol.append(SolutionStep(
             kind=self.kind,
             variant=self.variant,
-            alg=" ".join(self.moves),
+            alg=f"{self.alg}",
             comment="")
         )
         return sol
@@ -93,7 +80,7 @@ class SolutionBuilder:
 
     def advance_to(self, kind: str, variant: str):
         global _builder
-        previous = self if self.moves else self.previous
+        previous = self if not self.alg.is_empty() else self.previous
         _builder = SolutionBuilder(kind, variant, previous=previous, listener=self.listener)
         self.notify()
 
