@@ -1,3 +1,4 @@
+from typing import Optional
 import io
 import threading
 import sys
@@ -16,7 +17,7 @@ logging.basicConfig(
 
 from cubelib.viz import CubeViz
 import cubelib.solution_builder
-from py_cubelib import debug, StepInfo
+from py_cubelib import debug, StepInfo, scramble as gen_scramble
 
 _builder = cubelib.solution_builder._builder
 
@@ -35,21 +36,20 @@ NEXT_STEPS = {
     ("eo", "fb"): ("dr", "ud"),
 }
 
-
-
-
 _running = True
 
 
-def scramble(str=""):
+def scramble(str: Optional[str] = None):
     """Reset the cube to the given scramble"""
+    if str is None:
+        str = gen_scramble()
     viz.set_scramble(str)
     _builder.clear()
 
 
 def check(i=0):
     """Load and check the numbered algorithm"""
-    _builder.load(i-1)
+    _builder.load(i - 1)
     key = (_builder.kind, _builder.variant)
     next = NEXT_STEPS.get(key, NEXT_STEPS_AFTER_SAVE.get(key))
     if next:
@@ -60,6 +60,7 @@ def back():
     """Go back to the previous step"""
     _builder.back()
 
+
 def reset():
     """Reset the cube to the beginning of the current step"""
     _builder.reset()
@@ -69,7 +70,7 @@ def save():
     """Save this algorithm and start a new one"""
     if _builder.step_info.is_solved(viz.cube):
         _builder.save()
-        next_step =  NEXT_STEPS_AFTER_SAVE.get((_builder.kind, _builder.variant))
+        next_step = NEXT_STEPS_AFTER_SAVE.get((_builder.kind, _builder.variant))
         if next_step:
             _builder.advance_to(*next_step)
         else:
@@ -111,19 +112,18 @@ def _z():
 
 def eofb():
     """Look for EO on FB axis"""
-    _set_orientation(0,0,0)
+    _set_orientation(0, 0, 0)
     _set_mode("eo", "fb")
 
 
-
 def eorl():
-    _set_orientation(0,0, -math.pi/2)
+    _set_orientation(0, 0, -math.pi / 2)
     """Look for EO on RL axis"""
     _set_mode("eo", "rl")
 
 
 def eoud():
-    _set_orientation(math.pi/2,0,0)
+    _set_orientation(math.pi / 2, 0, 0)
     """Look for EO on UD axis"""
     _set_mode("eo", "ud")
 
@@ -131,19 +131,19 @@ def eoud():
 def drud():
     """Look for DR on UD axis"""
     if _set_mode("dr", "ud"):
-        _set_orientation(0,0,0)
+        _set_orientation(0, 0, 0)
 
 
 def drrl():
     """Look for DR on RL axis"""
     if _set_mode("dr", "rl"):
-        _set_orientation(0,-math.pi/2,0)
+        _set_orientation(0, -math.pi / 2, 0)
 
 
 def drfb():
     """Look for DR on FB axis"""
     if _set_mode("dr", "fb"):
-        _set_orientation(math.pi/2,0,0)
+        _set_orientation(math.pi / 2, 0, 0)
 
 
 def htr():
@@ -294,10 +294,12 @@ def _debug():
 
 viz = CubeViz()
 
+
 def update(builder):
     global _builder
     _builder = builder
     viz.update(builder)
+
 
 if __name__ == "__main__":
     _builder.listener = update
@@ -306,11 +308,11 @@ if __name__ == "__main__":
     scramble("U L' B' U2 R2 B2 D R L F' R2 D2 B2 R2 U2 F2 D' R2 U' L2 U B2 U2")
     eofb()
     _append_moves("F' U2 R L B")
-    # drrl()
-    # _append_moves("U' L' D2 F2 R' D' R2 D")
-    # save()
-    # _append_moves("R' F2 B2 D2 R B2 R")
-    # save()
+    drrl()
+    _append_moves("U' L' D2 F2 R' D' R2 D")
+    save()
+    _append_moves("R' F2 B2 D2 R B2 R")
+    save()
 
     # drfb()
     # save()

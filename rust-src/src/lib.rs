@@ -18,6 +18,11 @@ use cubelib::solver::df_search::CancelToken;
 use cubelib::solver::solution::{
     ApplySolution, Solution as LibSolution, SolutionStep as LibSolutionStep,
 };
+use cubelib::solver_new::dr::DRStep;
+use cubelib::solver_new::eo::EOStep;
+use cubelib::solver_new::finish::HTRFinishStep;
+use cubelib::solver_new::group::StepGroup;
+use cubelib::solver_new::htr::HTRStep;
 use cubelib::steps::solver;
 use cubelib::steps::step::{next_step, StepConfig as LibStepConfig};
 use cubelib::steps::tables::PruningTables333;
@@ -326,6 +331,27 @@ fn solve_step(
     Ok(solutions)
 }
 
+#[pyfunction]
+fn scramble() -> PyResult<String> {
+    let cube = Cube333::random(&mut rand::rng());
+
+    let steps = vec![
+        EOStep::builder().max_length(7).build(),
+        DRStep::builder().build(),
+        HTRStep::builder().build(),
+        HTRFinishStep::builder().build(),
+    ];
+    let steps = StepGroup::sequential(steps);
+
+    let mut worker = steps.into_worker(cube);
+
+    let solution = worker.next().unwrap();
+
+    let alg = Into::<LibAlgorithm>::into(solution);
+    Ok(format!("{}", alg))
+}
+
+
 // The Python module definition
 #[pymodule]
 fn py_cubelib(_py: Python, m: &PyModule) -> PyResult<()> {
@@ -339,6 +365,7 @@ fn py_cubelib(_py: Python, m: &PyModule) -> PyResult<()> {
 
     m.add_function(wrap_pyfunction!(debug, m)?)?;
     m.add_function(wrap_pyfunction!(solve_step, m)?)?;
+    m.add_function(wrap_pyfunction!(scramble, m)?)?;
     Ok(())
 }
 

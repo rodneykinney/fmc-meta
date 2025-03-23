@@ -71,7 +71,7 @@ impl Solvable for FRUD {
     }
 }
 pub struct FRFB;
-impl Solvable for crate::FRFB {
+impl Solvable for FRFB {
     fn is_move_allowed(&self, s: &str) -> PyResult<bool> {
         let turn = Turn333::from_str(s).map_err(|_| PyValueError::new_err("Invalid move"))?;
         match turn.face {
@@ -160,7 +160,7 @@ impl Solvable for FRRL {
 
     fn case_name(&self, cube: &Cube333) -> String {
         let mut ud_cube = cube.clone();
-        ud_cube.transform(Transformation333::X);
+        ud_cube.transform(Transformation333::Z);
         let parity = FROrbitParityCoord::from(&ud_cube).val() == 1;
         let corner_case = match (FRCPOrbitCoord::from(&ud_cube.corners).val(), parity) {
             (0, true) => "0c3",
