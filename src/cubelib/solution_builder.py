@@ -109,9 +109,8 @@ class SolutionBuilder:
     def load(self, index: int):
         global _builder
         l = _steps.get((self.kind, self.variant), list())
-        if index <= len(l):
-            prev = l[index-1]
-            _builder = SolutionBuilder("", "", previous=prev, listener=self.listener)
+        if l and index <= len(l):
+            _builder = l[index]
             self.notify()
 
 

@@ -49,7 +49,7 @@ def scramble(str=""):
 
 def check(i=0):
     """Load and check the numbered algorithm"""
-    _builder.load(i)
+    _builder.load(i-1)
     key = (_builder.kind, _builder.variant)
     next = NEXT_STEPS.get(key, NEXT_STEPS_AFTER_SAVE.get(key))
     if next:
@@ -161,7 +161,7 @@ def _set_mode(kind, variant) -> bool:
     if step_info.is_eligible(viz.cube):
         _builder.advance_to(kind, variant)
         while step_info.is_solved(viz.cube) and _builder.previous:
-            _builder.advance_to(kind, variant)
+            _builder.back()
         return True
     else:
         print(f"Cube is not eligible for {kind}{variant}")
@@ -304,13 +304,14 @@ if __name__ == "__main__":
     threading.Thread(target=lambda: curses.wrapper(read_commands)).start()
 
     scramble("U L' B' U2 R2 B2 D R L F' R2 D2 B2 R2 U2 F2 D' R2 U' L2 U B2 U2")
-    # eofb()
-    # _append_moves("F' D2 R L F")
+    eofb()
+    _append_moves("F' U2 R L B")
     # drrl()
-    # _append_moves("U' L' F2 D2 R' D' L2 D")
-
+    # _append_moves("U' L' D2 F2 R' D' R2 D")
     # save()
-    # check()
+    # _append_moves("R' F2 B2 D2 R B2 R")
+    # save()
+
     # drfb()
     # save()
     # check()
