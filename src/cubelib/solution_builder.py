@@ -1,7 +1,7 @@
 from typing import Optional, Dict, List, Tuple
 from collections import defaultdict
 
-from py_cubelib import Solution, SolutionStep, Algorithm, StepInfo, debug
+from py_cubelib import Algorithm, StepInfo, debug
 
 
 class SolutionBuilder:
@@ -41,18 +41,6 @@ class SolutionBuilder:
             return self.previous.full_alg().merge(self.alg)
         return self.alg
 
-    def build(self) -> Solution:
-        sol = Solution()
-        if self.previous is not None:
-            sol = self.previous.build()
-        sol.append(SolutionStep(
-            kind=self.kind,
-            variant=self.variant,
-            alg=f"{self.alg}",
-            comment="")
-        )
-        return sol
-
     def back(self):
         global _builder
 
@@ -77,6 +65,12 @@ class SolutionBuilder:
 
     def save(self):
         _steps[(self.kind, self.variant)].append(self)
+
+    def is_empty(self) -> bool:
+        val = self.alg.is_empty()
+        if self.previous:
+            val = val and self.previous.is_empty()
+        return val
 
     def advance_to(self, kind: str, variant: str):
         global _builder

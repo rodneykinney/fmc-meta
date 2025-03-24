@@ -10,7 +10,7 @@ import math
 import numpy as np
 
 from cubelib.solution_builder import SolutionBuilder
-from py_cubelib import (Cube, Solution, StepInfo)
+from py_cubelib import (Cube, StepInfo)
 import pyquaternion
 
 # U + L + F + R + B + D
@@ -154,6 +154,7 @@ class CubeViz():
         self.hide_edges = False
         self.show_all = False
 
+        self.scramble = ""
         self.cube = Cube("")
         self.builder = SolutionBuilder()
         self.inverse = False
@@ -261,9 +262,8 @@ class CubeViz():
 
     def update(self, builder: SolutionBuilder):
         self.builder = builder
-        self.solution = builder.build()
         self.cube = Cube(self.scramble)
-        self.cube.apply(self.solution)
+        self.cube.apply(self.builder.full_alg())
         if self.inverse:
             self.cube.invert()
         self.refresh()
@@ -316,11 +316,7 @@ class CubeViz():
 
         glPopMatrix()
 
-        solution = self.solution
-
         # Draw text
-        if not solution.steps:
-            return
         font = pygame.font.SysFont('Arial', 22)
 
         def write(text, x, y, top_justify=False, right_justify=False):
@@ -337,21 +333,19 @@ class CubeViz():
 
         write(self.scramble, 10, self.display_height, top_justify=True)
 
-        n = len(solution.steps)
         y = 10
         y += write(
-            f"{self.builder.step_info.kind}{self.builder.step_info.variant} - {solution.steps[n - 1].alg}{' (' if self.inverse else ''}",
+            f"{self.builder.step_info.kind}{self.builder.step_info.variant} - {self.builder.alg}{' (' if self.inverse else ''}",
             10, y)
-        for i in range(2, n + 1):
-            y += write(
-                f"{solution.steps[n - i].alg} // {solution.steps[n - i].kind}{solution.steps[n - i].variant}",
-                10, y)
+        b = self.builder.previous
+        while b is not None:
+            y += write(f"{b.alg} // {b.kind}",10, y)
+            b = b.previous
 
-        if solution.steps:
-            write(
-                self.builder.step_info.case_name(self.cube),
-                self.display_width - 10, 10, right_justify=True
-            )
+        write(
+            self.builder.step_info.case_name(self.cube),
+            self.display_width - 10, 10, right_justify=True
+        )
 
     def rotate(self, dx, dy=0):
         self.view_angle += dx * .005

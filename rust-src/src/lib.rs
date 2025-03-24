@@ -2,206 +2,26 @@ mod dr;
 mod eo;
 mod fr;
 mod htr;
+mod solver;
 
+use cubelib::steps::solver::gen_tables;
+use cubelib::steps::solver::build_steps;
+use cubelib::solver::df_search::CancelToken;
 use pyo3::prelude::*;
-use std::collections::HashMap;
 use std::str::FromStr;
 
 use pyo3::exceptions::PyValueError;
-use pyo3::FromPyObject;
 
 use cubelib::algs::Algorithm as LibAlgorithm;
-use cubelib::cube::turn::{ApplyAlgorithm, Direction, Invertible, InvertibleMut};
+use cubelib::cube::turn::{ApplyAlgorithm, Direction, Invertible, InvertibleMut, TurnableMut};
 use cubelib::cube::{Corner, Cube333, Turn333};
-use cubelib::defs::{NissSwitchType, StepKind as LibStepKind};
-use cubelib::solver::df_search::CancelToken;
-use cubelib::solver::solution::{
-    ApplySolution, Solution as LibSolution, SolutionStep as LibSolutionStep,
-};
-use cubelib::solver_new::dr::DRStep;
-use cubelib::solver_new::eo::EOStep;
-use cubelib::solver_new::finish::HTRFinishStep;
-use cubelib::solver_new::group::StepGroup;
-use cubelib::solver_new::htr::HTRStep;
-use cubelib::steps::solver;
-use cubelib::steps::step::{next_step, StepConfig as LibStepConfig};
+use cubelib::defs::{NissSwitchType, StepKind};
+use cubelib::steps::step::StepConfig;
 use cubelib::steps::tables::PruningTables333;
-
 use crate::dr::{DRFB, DRRL, DRUD};
 use crate::eo::{EOFB, EORL, EOUD};
 use crate::fr::{FRFB, FRRL, FRUD};
 use crate::htr::{HTRFB, HTRRL, HTRUD};
-
-#[pyclass]
-#[derive(FromPyObject)]
-struct StepConfig {
-    kind: String,
-    substeps: Option<Vec<String>>,
-    min: Option<u8>,
-    max: Option<u8>,
-    absolute_min: Option<u8>,
-    absolute_max: Option<u8>,
-    step_limit: Option<usize>,
-    niss: Option<String>,
-    params: Option<HashMap<String, String>>,
-}
-
-#[pymethods]
-impl StepConfig {
-    #[new]
-    fn new(
-        kind: String,
-        niss: Option<String>,
-        params: Option<HashMap<String, String>>,
-        substeps: Option<Vec<String>>,
-        min: Option<u8>,
-        max: Option<u8>,
-        absolute_min: Option<u8>,
-        absolute_max: Option<u8>,
-        step_limit: Option<usize>,
-    ) -> PyResult<Self> {
-        let _s =
-            LibStepKind::from_str(&kind).map_err(|_| PyValueError::new_err("Invalid step kind"))?;
-        Ok(StepConfig {
-            kind: kind,
-            substeps: substeps,
-            min: min,
-            max: max,
-            absolute_min: absolute_min,
-            absolute_max: absolute_max,
-            niss: niss,
-            step_limit: step_limit,
-            params: params,
-        })
-    }
-    #[getter]
-    fn kind(&self) -> String {
-        self.kind.clone()
-    }
-    #[getter]
-    fn substeps(&self) -> Option<Vec<String>> {
-        self.substeps.clone()
-    }
-    #[getter]
-    fn min(&self) -> Option<u8> {
-        self.min
-    }
-    #[getter]
-    fn max(&self) -> Option<u8> {
-        self.max
-    }
-    #[getter]
-    fn absolute_min(&self) -> Option<u8> {
-        self.absolute_min
-    }
-    #[getter]
-    fn absolute_max(&self) -> Option<u8> {
-        self.absolute_max
-    }
-    #[getter]
-    fn step_limit(&self) -> Option<usize> {
-        self.step_limit
-    }
-    #[getter]
-    fn niss(&self) -> Option<String> {
-        self.niss.clone()
-    }
-    #[getter]
-    fn params(&self) -> Option<HashMap<String, String>> {
-        self.params.clone()
-    }
-    fn __repr__(&self) -> String {
-        format!("StepConfig {{ kind: {}, substeps: {:?}, min: {:?}, max: {:?}, absolute_min: {:?}, absolute_max: {:?}, step_limit: {:?}, niss: {:?}, params: {:?} }}", self.kind, self.substeps, self.min, self.max, self.absolute_min, self.absolute_max, self.step_limit, self.niss, self.params)
-    }
-}
-
-#[pyclass]
-#[derive(Clone)]
-struct SolutionStep(LibSolutionStep);
-
-#[pymethods]
-impl SolutionStep {
-    #[new]
-    fn new(kind: String, variant: String, alg: String, comment: String) -> PyResult<Self> {
-        let kind =
-            LibStepKind::from_str(&kind).map_err(|_| PyValueError::new_err("Invalid step kind"))?;
-        let alg =
-            LibAlgorithm::from_str(&alg).map_err(|_| PyValueError::new_err("Invalid algorithm"))?;
-        Ok(SolutionStep(LibSolutionStep {
-            kind,
-            variant,
-            alg,
-            comment,
-        }))
-    }
-    #[getter]
-    fn kind(&self) -> String {
-        Into::<String>::into(self.0.kind.clone())
-    }
-    #[getter]
-    fn variant(&self) -> String {
-        self.0.variant.clone()
-    }
-    #[getter]
-    fn alg(&self) -> Algorithm {
-        Algorithm(self.0.alg.clone())
-    }
-    #[getter]
-    fn comment(&self) -> String {
-        self.0.comment.clone()
-    }
-    fn append(&mut self, move_str: &str) -> PyResult<SolutionStep> {
-        let turn =
-            Turn333::from_str(move_str).map_err(|_| PyValueError::new_err("Invalid move"))?;
-        self.0.alg.normal_moves.push(turn);
-        Ok(self.clone())
-    }
-}
-
-#[pyclass]
-#[derive(Clone)]
-struct Solution(LibSolution);
-
-#[pymethods]
-impl Solution {
-    #[new]
-    fn new() -> Self {
-        Solution(LibSolution::new())
-    }
-    #[getter]
-    fn steps(&self) -> Vec<SolutionStep> {
-        self.0
-            .steps
-            .iter()
-            .map(|step| SolutionStep(step.clone()))
-            .collect()
-    }
-    #[setter]
-    fn set_steps(&mut self, steps: Vec<SolutionStep>) {
-        self.0.steps = steps.iter().map(|step| step.0.clone()).collect();
-    }
-    #[getter]
-    fn ends_on_normal(&self) -> bool {
-        self.0.ends_on_normal
-    }
-    fn append(&mut self, step: SolutionStep) {
-        self.0.steps.push(step.0.clone());
-    }
-
-    fn __repr__(&self) -> String {
-        format!("{}", self.0)
-    }
-}
-
-#[pyclass]
-struct StepKind(LibStepKind);
-
-#[pymethods]
-impl StepKind {
-    fn __repr__(&self) -> String {
-        format!("{}", self.0)
-    }
-}
 
 #[pyclass]
 struct Algorithm(LibAlgorithm);
@@ -237,9 +57,6 @@ impl Algorithm {
         for turn in other.0.inverse_moves.iter() {
             alg = append_move(&alg, *turn, true);
         }
-
-        alg.normal_moves.extend(other.0.normal_moves.clone());
-        alg.inverse_moves.extend(other.0.inverse_moves.clone());
         Algorithm(alg)
     }
 
@@ -344,8 +161,15 @@ impl Cube {
         Ok(corners)
     }
 
-    fn apply(&mut self, solution: &Solution) {
-        self.0.apply_solution(&solution.0);
+    fn apply(&mut self, alg: &Algorithm) {
+        for step in alg.0.normal_moves.iter() {
+            self.0.turn(*step);
+        }
+        self.0.invert();
+        for step in alg.0.inverse_moves.iter() {
+            self.0.turn(*step);
+        }
+        self.0.invert();
     }
 
     fn invert(&mut self) {
@@ -354,88 +178,30 @@ impl Cube {
 }
 
 #[pyfunction]
-fn solve_step(
-    cube: Cube,
-    step_config: StepConfig,
-    solutions: Vec<Solution>,
-) -> PyResult<Vec<Solution>> {
-    // let alg = LibAlgorithm::from_str(&scramble).map_err(|_| PyValueError::new_err("Invalid scramble"))?;
-    // let mut cube = Cube333::default();
-    // cube.apply_alg(&alg);
-
-    let step_configs = vec![step_config]
-        .into_iter()
-        .map(|s| {
-            let niss = s.niss.as_ref().map(|n| match n.as_str() {
-                "never" => NissSwitchType::Never,
-                "always" => NissSwitchType::Always,
-                "before" => NissSwitchType::Before,
-                _ => NissSwitchType::Never,
-            });
-            LibStepConfig {
-                kind: LibStepKind::from_str(&s.kind).unwrap(),
-                substeps: s.substeps,
-                min: s.min,
-                max: s.max,
-                absolute_min: s.absolute_min,
-                absolute_max: s.absolute_max,
-                niss,
-                step_limit: s.step_limit,
-                quality: 0,
-                params: s.params.unwrap_or_default(),
-            }
-        })
-        .collect();
-
-    let mut tables = PruningTables333::new();
-    solver::gen_tables(&step_configs, &mut tables);
-    let (step, options) = &solver::build_steps(step_configs.clone(), &tables)
-        .map_err(|e| PyValueError::new_err(format!("Error building steps: {:?}", e)))?[0];
-
-    let cancel_token = CancelToken::default();
-    let solutions = if solutions.is_empty() {
-        vec![Solution(LibSolution::new())]
-    } else {
-        solutions
-    };
-    // let solutions = cubelib::solver::solve_steps(cube.0, &steps, &CancelToken::default());
-    // Ok(solutions.into_iter().map(Solution).collect())
-    let solutions: Vec<Solution> = solutions
-        .iter()
-        .flat_map(|solution| {
-            next_step(
-                vec![solution.0.clone()].into_iter(),
-                &step,
-                options.clone(),
-                cube.0.clone(),
-                &cancel_token,
-            )
-            .map(|s| Solution(s))
-            .collect::<Vec<_>>()
-        })
-        .collect::<Vec<_>>();
-    Ok(solutions)
-}
-
-#[pyfunction]
 fn scramble() -> PyResult<String> {
     let cube = Cube333::random(&mut rand::rng());
 
-    let steps = vec![
-        EOStep::builder().niss(NissSwitchType::Never).build(),
-        DRStep::builder().niss(NissSwitchType::Never).build(),
-        HTRStep::builder().max_absolute_length(30).niss(NissSwitchType::Never).build(),
-        HTRFinishStep::builder().max_absolute_length(30).build(),
+    let mut tables = PruningTables333::new();
+
+    let step_configs = vec![
+        StepConfig { kind: StepKind::EO, substeps: None, min: None, max: Some(6), absolute_min: None, absolute_max: None, step_limit: None, quality: 100, niss: None, params: Default::default() },
+        StepConfig { kind: StepKind::DR, substeps: None, min: None, max: None, absolute_min: None, absolute_max: None, step_limit: None, quality: 100, niss: None, params: Default::default() },
+        StepConfig { kind: StepKind::HTR, substeps: None, min: None, max: None, absolute_min: None, absolute_max: None, step_limit: None, quality: 100, niss: None, params: Default::default() },
+        StepConfig { kind: StepKind::FIN, substeps: None, min: None, max: None, absolute_min: None, absolute_max: None, step_limit: None, quality: 100, niss: None, params: Default::default() },
     ];
-    let mut steps = StepGroup::sequential(steps);
-    steps.apply_step_limit(40);
-    // let steps = EOStep::builder().max_length(7).build();
+    gen_tables(&step_configs, &mut tables);
 
-    let mut worker = steps.into_worker(cube);
+    let steps = build_steps(step_configs, &tables).map_err(|e| PyValueError::new_err(e))?;
+    let cancel_token = CancelToken::default();
+    let mut solutions = cubelib::solver::solve_steps(cube, &steps, &cancel_token);
 
-    let solution = worker.next().unwrap();
-
+    let solution = solutions.next().ok_or_else(|| PyValueError::new_err("No solutions found"))?;
     let alg = Into::<LibAlgorithm>::into(solution);
+    let mut moves = alg.normal_moves.clone();
+    let mut imoves = alg.inverse_moves.clone();
+    imoves.reverse();
+    moves.append(&mut imoves);
+    let alg = LibAlgorithm{ normal_moves: moves, inverse_moves: vec![] };
     Ok(format!("{}", alg))
 }
 
@@ -445,13 +211,9 @@ fn py_cubelib(_py: Python, m: &PyModule) -> PyResult<()> {
     // Register the classes
     m.add_class::<Cube>()?;
     m.add_class::<Algorithm>()?;
-    m.add_class::<Solution>()?;
-    m.add_class::<SolutionStep>()?;
-    m.add_class::<StepConfig>()?;
     m.add_class::<StepInfo>()?;
 
     m.add_function(wrap_pyfunction!(debug, m)?)?;
-    m.add_function(wrap_pyfunction!(solve_step, m)?)?;
     m.add_function(wrap_pyfunction!(scramble, m)?)?;
     Ok(())
 }
@@ -710,34 +472,34 @@ mod tests {
     fn algorithm_append() {
         let alg = Algorithm::new("").unwrap();
         let alg = alg.append("F", false).unwrap();
-        assert!(format!("{}", alg.0) == "F");
+        assert_eq!(format!("{}", alg.0), "F");
         let alg = alg.append("F'", false).unwrap();
-        assert!(format!("{}", alg.0) == "");
+        assert_eq!(format!("{}", alg.0), "");
         let alg = alg.append("F", false).unwrap();
         let alg = alg.append("F", false).unwrap();
-        assert!(format!("{}", alg.0) == "F2");
+        assert_eq!(format!("{}", alg.0), "F2");
         let alg = alg.append("B2", false).unwrap();
-        assert!(format!("{}", alg.0) == "F2 B2");
+        assert_eq!(format!("{}", alg.0), "F2 B2");
         let alg = alg.append("F", false).unwrap();
-        assert!(format!("{}", alg.0) == "F' B2");
+        assert_eq!(format!("{}", alg.0), "F' B2");
 
         let alg = Algorithm::new("").unwrap();
         let alg = alg.append("F", true).unwrap();
-        assert!(format!("{}", alg.0) == "(F)");
+        assert_eq!(format!("{}", alg.0), "(F)");
         let alg = alg.append("F'", true).unwrap();
-        assert!(format!("{}", alg.0) == "");
+        assert_eq!(format!("{}", alg.0), "");
         let alg = alg.append("F", true).unwrap();
         let alg = alg.append("F", true).unwrap();
-        assert!(format!("{}", alg.0) == "(F2)");
+        assert_eq!(format!("{}", alg.0), "(F2)");
         let alg = alg.append("B2", true).unwrap();
-        assert!(format!("{}", alg.0) == "(F2 B2)");
+        assert_eq!(format!("{}", alg.0), "(F2 B2)");
         let alg = alg.append("F", true).unwrap();
-        assert!(format!("{}", alg.0) == "(F' B2)");
+        assert_eq!(format!("{}", alg.0), "(F' B2)");
         let alg = alg.append("F", false).unwrap();
-        assert!(format!("{}", alg.0) == "F (F' B2)");
+        assert_eq!(format!("{}", alg.0), "F (F' B2)");
     }
 
-    #[ignore]
+    #[test]
     fn scramble_gen() {
         let s = scramble().unwrap();
         assert!(s.len() > 0);

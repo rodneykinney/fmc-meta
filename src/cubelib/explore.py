@@ -17,7 +17,7 @@ logging.basicConfig(
 
 from cubelib.viz import CubeViz
 import cubelib.solution_builder
-from py_cubelib import debug, StepInfo, scramble as gen_scramble
+from py_cubelib import debug, scramble as gen_scramble, StepInfo
 
 _builder = cubelib.solution_builder._builder
 _inverse = False
@@ -84,8 +84,8 @@ def list():
     """List the saved algorithms for the current step"""
     print(f"{_builder.kind.upper()}{_builder.variant.upper()}: ")
     for (i, b) in enumerate(_builder.saved_solutions_of_same_step()):
-        alg = b.full_alg()
-        print(f"  {i + 1}: {alg} ({alg.len()})")
+        full_alg = b.full_alg()
+        print(f"  {i + 1}: {full_alg} ({full_alg.len()})")
 
 
 def niss():
@@ -299,7 +299,7 @@ def read_commands(window):
 
 
 def _debug():
-    print(f"{_builder.build()}")
+    print(f"{_builder.full_alg()}")
 
 
 viz = CubeViz()
@@ -313,17 +313,20 @@ def update(builder):
 
 if __name__ == "__main__":
     _builder.listener = update
+    viz.update(_builder)
     threading.Thread(target=lambda: curses.wrapper(read_commands)).start()
 
-    scramble("U L' B' U2 R2 B2 D R L F' R2 D2 B2 R2 U2 F2 D' R2 U' L2 U B2 U2")
+    # scramble("U L' B' U2 R2 B2 D R L F' R2 D2 B2 R2 U2 F2 D' R2 U' L2 U B2 U2")
     # eofb()
-    # niss(); _append_moves("B") ; niss() ;_append_moves("F' L' F") ; save()
+    # niss(); _append_moves("B") ; niss() ;_append_moves("F' L' F") ; save() ; check()
+    # niss(); _append_moves("F2 R"); niss() ; _append_moves("R2 L2 D U2 L") ; save()
+    # _append_moves("R2 F2 D' B2 U2 R2 U R2 U") ; save()
     # niss(); _append_moves("B F L F") ; niss() ; save()
     # _append_moves("f") ; niss() ; _append_moves("D2 L B") ; niss() ; save()
     # niss(); _append_moves("B") ; niss() ;_append_moves("U2 B L B") ; save()
     # niss(); _append_moves("B") ; niss() ;_append_moves("D2 F R F") ; save()
 
-# eofb()
+    # eofb()
     # _append_moves("F' U2 R L B")
     # drrl()
     # _append_moves("U' L' D2 F2 R' D' R2 D")
