@@ -19,22 +19,23 @@ from cubelib.viz import CubeViz
 import cubelib.solution_builder
 from py_cubelib import debug, scramble as gen_scramble, StepInfo
 
+viz = CubeViz()
 _builder = cubelib.solution_builder._builder
 _inverse = False
 
-NEXT_STEPS_AFTER_SAVE = {
-    ("dr", "ud"): ("htr", "ud"),
-    ("dr", "rl"): ("htr", "rl"),
-    ("dr", "fb"): ("htr", "fb"),
-    ("htr", "ud"): ("fr", "ud"),
-    ("htr", "rl"): ("fr", "rl"),
-    ("htr", "fb"): ("fr", "fb"),
-}
-
 NEXT_STEPS = {
-    ("eo", "ud"): ("dr", "fb"),
-    ("eo", "rl"): ("dr", "ud"),
-    ("eo", "fb"): ("dr", "ud"),
+    ("eo", "ud"): [("dr", "fb"), ("dr", "rl")],
+    ("eo", "rl"): [("dr", "ud"), ("dr", "fb")],
+    ("eo", "fb"): [("dr", "ud"), ("dr", "rl")],
+    ("dr", "ud"): [("htr", "ud")],
+    ("dr", "rl"): [("htr", "rl")],
+    ("dr", "fb"): [("htr", "fb")],
+    ("htr", "ud"): [("fr", "ud")],
+    ("htr", "rl"): [("fr", "rl")],
+    ("htr", "fb"): [("fr", "fb")],
+    ("fr", "ud"): [("slice", "")],
+    ("fr", "fr"): [("slice", "")],
+    ("fr", "rl"): [("slice", "")],
 }
 
 _running = True
@@ -44,6 +45,7 @@ def scramble(str: Optional[str] = None):
     """Reset the cube to the given scramble"""
     if str is None:
         str = gen_scramble()
+    print(str)
     viz.set_scramble(str)
     _builder.clear()
 
@@ -52,14 +54,28 @@ def check(i=0):
     """Load and check the numbered algorithm"""
     _builder.load(i - 1)
     key = (_builder.kind, _builder.variant)
-    next = NEXT_STEPS.get(key, NEXT_STEPS_AFTER_SAVE.get(key))
-    if next:
-        _builder.advance_to(*next)
+    next_steps = NEXT_STEPS.get(key)
+    if next_steps:
+        _builder.advance_to(*next_steps[0])
+        if _builder.previous:
+            comment = f"{_builder.kind}{_builder.variant if len(next_steps) else ''} {_builder.step_info.case_name(viz.cube)}"
+            _builder.previous.append_comment(comment)
 
 
 def back():
     """Go back to the previous step"""
     _builder.back()
+
+
+def solve(max: int = 0):
+    """Find and save solutions for the current step"""
+    algs = _builder.step_info.solve(viz.cube, max)
+    count=0
+    for alg in algs:
+        count += 1 if _builder.save_solution(alg) else 0
+        if count >= 10:
+            break
+    list()
 
 
 def reset():
@@ -69,23 +85,27 @@ def reset():
 
 def save():
     """Save this algorithm and start a new one"""
-    if _builder.step_info.is_solved(viz.cube):
-        _builder.save()
-        next_step = NEXT_STEPS_AFTER_SAVE.get((_builder.kind, _builder.variant))
-        if next_step:
-            _builder.advance_to(*next_step)
-        else:
-            _builder.reset()
-    else:
+    if not _builder.step_info.is_solved(viz.cube):
         print(f"Cube is not in {_builder.kind}{_builder.variant}")
+        return
+    _builder.save()
+    next_steps = NEXT_STEPS.get((_builder.kind, _builder.variant))
+    if next_steps is not None and len(next_steps) == 1:
+        _builder.advance_to(*next_steps[0])
+        if _builder.previous:
+            comment = f"{_builder.kind}{_builder.variant if len(next_steps) else ''} {_builder.step_info.case_name(viz.cube)}"
+            _builder.previous.append_comment(comment)
+    else:
+        _builder.reset()
 
 
 def list():
     """List the saved algorithms for the current step"""
-    print(f"{_builder.kind.upper()}{_builder.variant.upper()}: ")
+    print(f"{_builder.kind}{_builder.variant}: ")
     for (i, b) in enumerate(_builder.saved_solutions_of_same_step()):
         full_alg = b.full_alg()
-        print(f"  {i + 1}: {full_alg} ({full_alg.len()})")
+        print(
+            f" {' ' if b.is_checked else '?'}{i + 1}: {full_alg} ({full_alg.len()}) // {b.comment}")
 
 
 def niss():
@@ -94,6 +114,7 @@ def niss():
     _inverse = not _inverse
     viz.set_inverse(_inverse)
     viz.update(_builder)
+
 
 def _append_moves(moves):
     if not _builder.append_moves(moves.split(" "), _inverse):
@@ -167,8 +188,8 @@ def fr():
 def _set_mode(kind, variant) -> bool:
     step_info = StepInfo(kind, variant)
     if step_info.is_eligible(viz.cube):
-        if not step_info.is_solved(viz.cube):
-            _builder.back()
+        if (not _builder.alg.is_empty()) and not _builder.step_info.is_solved(viz.cube):
+            _builder.reset()
         _builder.advance_to(kind, variant)
         while step_info.is_solved(viz.cube) and _builder.previous:
             _builder.back()
@@ -246,7 +267,7 @@ def read_commands(window):
         window.move(0, len(s))
         window.refresh()
 
-    def dump_stdout():
+    def flush():
         window.move(1, 0)
         window.clrtobot()
         window.addstr(1, 0, stdout_buffer.getvalue())
@@ -265,7 +286,7 @@ def read_commands(window):
             key = window.getch()
             if key == curses.KEY_ENTER or key == 10:
                 execute(cmd.strip())
-                dump_stdout()
+                flush()
                 global last_command
                 last_command = cmd
                 cmd = ""
@@ -278,7 +299,7 @@ def read_commands(window):
             elif key == curses.KEY_RIGHT:
                 viz.rotate(25)
             elif key == curses.KEY_UP:
-                dump_stdout()
+                flush()
                 cmd = last_command
                 prompt()
             elif chr(key) in {'x', 'y', 'z'} and cmd == "":
@@ -286,12 +307,17 @@ def read_commands(window):
             else:
                 cmd += chr(key)
                 prompt()
-        except:
+        except NameError:
+            print(f'Unknown command "{cmd}". Type "help" for help')
+            flush()
+            cmd = ""
+            prompt()
+        except Exception as e:
             try:
                 logging.debug(traceback.format_exc())
                 logging.debug(sys.exc_info())
-                print(f'Unknown command "{cmd}". Type "help" for help')
-                dump_stdout()
+                print(f"Error: {e}")
+                flush()
                 cmd = ""
                 prompt()
             except:
@@ -300,9 +326,6 @@ def read_commands(window):
 
 def _debug():
     print(f"{_builder.full_alg()}")
-
-
-viz = CubeViz()
 
 
 def update(builder):
@@ -315,6 +338,11 @@ if __name__ == "__main__":
     _builder.listener = update
     viz.update(_builder)
     threading.Thread(target=lambda: curses.wrapper(read_commands)).start()
+    # scramble()
+    # eofb()
+    # solve(max=4)
+    # check(1)
+    # drud()
 
     # scramble("U L' B' U2 R2 B2 D R L F' R2 D2 B2 R2 U2 F2 D' R2 U' L2 U B2 U2")
     # eofb()

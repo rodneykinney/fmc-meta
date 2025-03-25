@@ -18,6 +18,8 @@ class SolutionBuilder:
         self.previous = previous
         self.listener = listener
         self.alg = Algorithm("")
+        self.is_checked = False
+        self.comment = ""
 
     def append_moves(self, moves: List[str], inverse: bool) -> bool:
         if not all(self.allows_move(m) for m in moves):
@@ -63,8 +65,27 @@ class SolutionBuilder:
         _builder = SolutionBuilder(self.kind, self.variant, previous=self.previous, listener=self.listener)
         self.notify()
 
-    def save(self):
-        _steps[(self.kind, self.variant)].append(self)
+    def save(self) -> bool:
+        existing = _steps[(self.kind, self.variant)]
+        if f"{self.alg}" in [f"{b.alg}" for b in existing]:
+            return False
+        existing.append(self)
+        return True
+
+    def save_solution(self, alg: Algorithm):
+        existing = _steps[(self.kind, self.variant)]
+        if f"{alg}" in [f"{b.alg}" for b in existing]:
+            return False
+        b = SolutionBuilder(
+                kind=self.kind,
+                variant=self.variant,
+                previous=self.previous,
+                listener=self.listener
+            )
+        b.alg = alg
+        existing.append(b)
+        return True
+
 
     def is_empty(self) -> bool:
         val = self.alg.is_empty()
@@ -76,7 +97,11 @@ class SolutionBuilder:
         global _builder
         previous = self if not self.alg.is_empty() else self.previous
         _builder = SolutionBuilder(kind, variant, previous=previous, listener=self.listener)
+        self.is_checked = True
         self.notify()
+
+    def append_comment(self, str):
+        self.comment = f"{self.comment}{' ' if self.comment else ''}{str}"
 
     def saved_solutions_of_same_step(self) -> List["SolutionBuilder"]:
         return _steps[(self.kind, self.variant)]

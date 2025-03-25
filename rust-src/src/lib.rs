@@ -4,24 +4,19 @@ mod fr;
 mod htr;
 mod solver;
 
-use cubelib::steps::solver::gen_tables;
-use cubelib::steps::solver::build_steps;
-use cubelib::solver::df_search::CancelToken;
 use pyo3::prelude::*;
 use std::str::FromStr;
 
 use pyo3::exceptions::PyValueError;
 
 use cubelib::algs::Algorithm as LibAlgorithm;
-use cubelib::cube::turn::{ApplyAlgorithm, Direction, Invertible, InvertibleMut, TurnableMut};
+use cubelib::cube::turn::{ApplyAlgorithm, Direction, Invertible, InvertibleMut};
 use cubelib::cube::{Corner, Cube333, Turn333};
-use cubelib::defs::{NissSwitchType, StepKind};
-use cubelib::steps::step::StepConfig;
-use cubelib::steps::tables::PruningTables333;
 use crate::dr::{DRFB, DRRL, DRUD};
 use crate::eo::{EOFB, EORL, EOUD};
 use crate::fr::{FRFB, FRRL, FRUD};
 use crate::htr::{HTRFB, HTRRL, HTRUD};
+use crate::solver::scramble;
 
 #[pyclass]
 struct Algorithm(LibAlgorithm);
@@ -162,47 +157,12 @@ impl Cube {
     }
 
     fn apply(&mut self, alg: &Algorithm) {
-        for step in alg.0.normal_moves.iter() {
-            self.0.turn(*step);
-        }
-        self.0.invert();
-        for step in alg.0.inverse_moves.iter() {
-            self.0.turn(*step);
-        }
-        self.0.invert();
+        self.0.apply_alg(&alg.0.clone());
     }
 
     fn invert(&mut self) {
         self.0.invert()
     }
-}
-
-#[pyfunction]
-fn scramble() -> PyResult<String> {
-    let cube = Cube333::random(&mut rand::rng());
-
-    let mut tables = PruningTables333::new();
-
-    let step_configs = vec![
-        StepConfig { kind: StepKind::EO, substeps: None, min: None, max: Some(6), absolute_min: None, absolute_max: None, step_limit: None, quality: 100, niss: None, params: Default::default() },
-        StepConfig { kind: StepKind::DR, substeps: None, min: None, max: None, absolute_min: None, absolute_max: None, step_limit: None, quality: 100, niss: None, params: Default::default() },
-        StepConfig { kind: StepKind::HTR, substeps: None, min: None, max: None, absolute_min: None, absolute_max: None, step_limit: None, quality: 100, niss: None, params: Default::default() },
-        StepConfig { kind: StepKind::FIN, substeps: None, min: None, max: None, absolute_min: None, absolute_max: None, step_limit: None, quality: 100, niss: None, params: Default::default() },
-    ];
-    gen_tables(&step_configs, &mut tables);
-
-    let steps = build_steps(step_configs, &tables).map_err(|e| PyValueError::new_err(e))?;
-    let cancel_token = CancelToken::default();
-    let mut solutions = cubelib::solver::solve_steps(cube, &steps, &cancel_token);
-
-    let solution = solutions.next().ok_or_else(|| PyValueError::new_err("No solutions found"))?;
-    let alg = Into::<LibAlgorithm>::into(solution);
-    let mut moves = alg.normal_moves.clone();
-    let mut imoves = alg.inverse_moves.clone();
-    imoves.reverse();
-    moves.append(&mut imoves);
-    let alg = LibAlgorithm{ normal_moves: moves, inverse_moves: vec![] };
-    Ok(format!("{}", alg))
 }
 
 // The Python module definition
@@ -305,35 +265,39 @@ pub struct StepInfo {
 }
 
 impl StepInfo {
-    fn step(&self) -> Box<dyn Solvable> {
-        StepBuilder::from_kind(&self.kind, &self.variant).unwrap()
+    fn step(&self) -> Result<Box<dyn Solvable>, String> {
+        StepBuilder::from_kind(&self.kind, &self.variant)
     }
 }
 
 #[pymethods]
 impl StepInfo {
     fn is_move_allowed(&self, s: &str) -> PyResult<bool> {
-        self.step().is_move_allowed(s)
+        self.step().map_err(|e|PyValueError::new_err(e.to_string()))?.is_move_allowed(s)
     }
 
-    fn is_solved(&self, cube: &Cube) -> bool {
-        self.step().is_solved(&cube.0)
+    fn is_solved(&self, cube: &Cube) -> PyResult<bool> {
+        Ok(self.step().map_err(|e|PyValueError::new_err(e.to_string()))?.is_solved(&cube.0))
     }
 
-    fn is_eligible(&self, cube: &Cube) -> bool {
-        self.step().is_eligible(&cube.0)
+    fn is_eligible(&self, cube: &Cube) -> PyResult<bool> {
+        Ok(self.step().map_err(|e|PyValueError::new_err(e.to_string()))?.is_eligible(&cube.0))
     }
 
-    fn case_name(&self, cube: &Cube) -> String {
-        self.step().case_name(&cube.0)
+    fn case_name(&self, cube: &Cube) -> PyResult<String> {
+        Ok(self.step().map_err(|e|PyValueError::new_err(e.to_string()))?.case_name(&cube.0))
     }
 
-    fn should_draw_edge(&self, cube: &Cube, pos: usize, facelet: u8) -> bool {
-        self.step().should_draw_edge(&cube.0, pos, facelet)
+    fn should_draw_edge(&self, cube: &Cube, pos: usize, facelet: u8) -> PyResult<bool> {
+        Ok(self.step().map_err(|e|PyValueError::new_err(e.to_string()))?.should_draw_edge(&cube.0, pos, facelet))
     }
 
-    fn should_draw_corner(&self, cube: &Cube, pos: usize, facelet: u8) -> bool {
-        self.step().should_draw_corner(&cube.0, pos, facelet)
+    fn should_draw_corner(&self, cube: &Cube, pos: usize, facelet: u8) -> PyResult<bool> {
+        Ok(self.step().map_err(|e|PyValueError::new_err(e.to_string()))?.should_draw_corner(&cube.0, pos, facelet))
+    }
+
+    fn solve(&self, cube: &Cube, max: u8) -> PyResult<Vec<Algorithm>> {
+        self.step().map_err(|e|PyValueError::new_err(e.to_string()))?.solve(&cube.0, max)
     }
 
     #[new]
@@ -352,6 +316,7 @@ trait Solvable {
     fn case_name(&self, cube: &Cube333) -> String;
     fn should_draw_edge(&self, cube: &Cube333, pos: usize, facelet: u8) -> bool;
     fn should_draw_corner(&self, cube: &Cube333, pos: usize, facelet: u8) -> bool;
+    fn solve(&self, cube: &Cube333, max: u8) -> PyResult<Vec<Algorithm>>;
 }
 struct StepBuilder;
 impl StepBuilder {
@@ -407,6 +372,9 @@ impl Solvable for SCRAMBLED {
     }
     fn should_draw_corner(&self, _cube: &Cube333, _pos: usize, _facelet: u8) -> bool {
         true
+    }
+    fn solve(&self, _cube: &Cube333, _max: u8) -> PyResult<Vec<Algorithm>> {
+        Err(PyValueError::new_err("Direct solver is not implemented"))
     }
 }
 

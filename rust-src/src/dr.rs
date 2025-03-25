@@ -1,5 +1,6 @@
 use crate::eo::{EOFB, EORL, EOUD};
-use crate::{DrawableCorner, Solvable};
+use crate::solver::{solve_step, step_config};
+use crate::{Algorithm, DrawableCorner, Solvable};
 use cubelib::cube::turn::TransformableMut;
 use cubelib::cube::{Corner, Cube333, CubeFace, Direction, Transformation333, Turn333};
 use cubelib::steps::coord::Coord;
@@ -8,6 +9,7 @@ use cubelib::steps::eo::coords::BadEdgeCount;
 use pyo3::exceptions::PyValueError;
 use pyo3::PyResult;
 use std::str::FromStr;
+use cubelib::defs::StepKind;
 
 pub struct DRUD;
 impl Solvable for DRUD {
@@ -47,6 +49,9 @@ impl Solvable for DRUD {
         let c = cube.corners.get_corners()[pos];
         !c.oriented_ud(pos as u8) && facelet == c.facelet_showing_ud()
     }
+    fn solve(&self, cube: &Cube333, max: u8) -> PyResult<Vec<Algorithm>> {
+        solve_step(cube, step_config(StepKind::DR, "ud", Some(max))).map_err(|e| PyValueError::new_err(e))
+    }
 }
 
 pub struct DRFB;
@@ -80,6 +85,9 @@ impl Solvable for DRFB {
         let c = cube.corners.get_corners()[pos];
         !c.oriented_fb(pos as u8) && facelet == c.facelet_showing_fb()
     }
+    fn solve(&self, cube: &Cube333, max: u8) -> PyResult<Vec<Algorithm>> {
+        solve_step(cube, step_config(StepKind::DR, "fb", Some(max))).map_err(|e| PyValueError::new_err(e))
+    }
 }
 pub struct DRRL;
 impl Solvable for DRRL {
@@ -110,5 +118,8 @@ impl Solvable for DRRL {
     fn should_draw_corner(&self, cube: &Cube333, pos: usize, facelet: u8) -> bool {
         let c = cube.corners.get_corners()[pos];
         !c.oriented_rl(pos as u8) && facelet == c.facelet_showing_rl()
+    }
+    fn solve(&self, cube: &Cube333, max: u8) -> PyResult<Vec<Algorithm>> {
+        solve_step(cube, step_config(StepKind::DR, "lr", Some(max)))
     }
 }

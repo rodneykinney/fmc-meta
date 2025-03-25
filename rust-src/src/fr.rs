@@ -1,4 +1,4 @@
-use crate::{Solvable, CORNER_FB_FACELETS, CORNER_OPPOSITE_E_SLICE, CORNER_OPPOSITE_M_SLICE, CORNER_OPPOSITE_S_SLICE, CORNER_RL_FACELETS, CORNER_UD_FACELETS, EDGE_FB_FACELETS, EDGE_OPPOSITE_E_SLICE, EDGE_OPPOSITE_M_SLICE, EDGE_OPPOSITE_S_SLICE, EDGE_RL_FACELETS, EDGE_UD_FACELETS, HTRFB, HTRRL, HTRUD};
+use crate::{Algorithm, Solvable, CORNER_FB_FACELETS, CORNER_OPPOSITE_E_SLICE, CORNER_OPPOSITE_M_SLICE, CORNER_OPPOSITE_S_SLICE, CORNER_RL_FACELETS, CORNER_UD_FACELETS, EDGE_FB_FACELETS, EDGE_OPPOSITE_E_SLICE, EDGE_OPPOSITE_M_SLICE, EDGE_OPPOSITE_S_SLICE, EDGE_RL_FACELETS, EDGE_UD_FACELETS, HTRFB, HTRRL, HTRUD};
 use cubelib::cube::turn::TransformableMut;
 use cubelib::cube::{Cube333, CubeFace, Direction, Transformation333, Turn333};
 use cubelib::steps::coord::Coord;
@@ -6,6 +6,8 @@ use cubelib::steps::fr::coords::{FRCPOrbitCoord, FROrbitParityCoord, FRUDNoSlice
 use pyo3::exceptions::PyValueError;
 use pyo3::PyResult;
 use std::str::FromStr;
+use cubelib::defs::StepKind;
+use crate::solver::{solve_step, step_config};
 
 pub struct FRUD;
 impl Solvable for FRUD {
@@ -68,6 +70,9 @@ impl Solvable for FRUD {
             }
             _ => false,
         }
+    }
+    fn solve(&self, cube: &Cube333, max: u8) -> PyResult<Vec<Algorithm>> {
+        solve_step(cube, step_config(StepKind::FRLS, "", Some(max)))
     }
 }
 pub struct FRFB;
@@ -136,6 +141,9 @@ impl Solvable for FRFB {
             _ => false,
         }
     }
+    fn solve(&self, cube: &Cube333, max: u8) -> PyResult<Vec<Algorithm>> {
+        solve_step(cube, step_config(StepKind::FRLS, "", Some(max)))
+    }
 }
 
 pub struct FRRL;
@@ -203,6 +211,9 @@ impl Solvable for FRRL {
             }
             _ => false,
         }
+    }
+    fn solve(&self, cube: &Cube333, max: u8) -> PyResult<Vec<Algorithm>> {
+        solve_step(cube, step_config(StepKind::FRLS, "", Some(max)))
     }
 }
 

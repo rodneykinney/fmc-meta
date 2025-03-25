@@ -1,9 +1,11 @@
-use crate::Solvable;
+use crate::{Algorithm, Solvable};
+use crate::solver::{solve_step, step_config};
 use cubelib::cube::{Cube333, CubeFace, Direction, Turn333};
 use cubelib::steps::eo::coords::BadEdgeCount;
 use pyo3::exceptions::PyValueError;
 use pyo3::PyResult;
 use std::str::FromStr;
+use cubelib::defs::StepKind;
 
 pub struct EOUD;
 impl Solvable for EOUD {
@@ -29,6 +31,9 @@ impl Solvable for EOUD {
     }
     fn should_draw_corner(&self, _cube: &Cube333, _pos: usize, _facelet: u8) -> bool {
         false
+    }
+    fn solve(&self, cube: &Cube333, max: u8) -> PyResult<Vec<Algorithm>> {
+        solve_step(cube, step_config(StepKind::EO, "ud", Some(max)))
     }
 }
 pub struct EOFB;
@@ -57,6 +62,9 @@ impl Solvable for EOFB {
     fn should_draw_corner(&self, _cube: &Cube333, _pos: usize, _facelet: u8) -> bool {
         false
     }
+    fn solve(&self, cube: &Cube333, max: u8) -> PyResult<Vec<Algorithm>> {
+      solve_step(cube, step_config(StepKind::EO, "fb", Some(max)))
+    }
 }
 pub struct EORL;
 impl Solvable for EORL {
@@ -83,5 +91,8 @@ impl Solvable for EORL {
     }
     fn should_draw_corner(&self, _cube: &Cube333, _pos: usize, _facelet: u8) -> bool {
         false
+    }
+    fn solve(&self, cube: &Cube333, max: u8) -> PyResult<Vec<Algorithm>> {
+        solve_step(cube, step_config(StepKind::EO, "lr", Some(max)))
     }
 }

@@ -1,8 +1,10 @@
 use std::str::FromStr;
 use cubelib::cube::{Cube333, Direction, Turn333};
+use cubelib::defs::StepKind;
 use pyo3::exceptions::PyValueError;
 use pyo3::PyResult;
-use crate::{DrawableCorner, Solvable, CORNER_FB_FACELETS, CORNER_RL_FACELETS, CORNER_UD_FACELETS, EDGE_FB_FACELETS, EDGE_RL_FACELETS, EDGE_UD_FACELETS};
+use crate::{Algorithm, DrawableCorner, Solvable, CORNER_FB_FACELETS, CORNER_RL_FACELETS, CORNER_UD_FACELETS, EDGE_FB_FACELETS, EDGE_RL_FACELETS, EDGE_UD_FACELETS};
+use crate::solver::{solve_step, step_config};
 
 pub struct HTRUD;
 impl Solvable for HTRUD {
@@ -37,6 +39,9 @@ impl Solvable for HTRUD {
         (c.id / 4 == 1 && facelet == c.facelet_showing_ud()) || // D sticker
             (!c.oriented_fb(pos as u8) && facelet != CORNER_UD_FACELETS[pos])
     }
+    fn solve(&self, cube: &Cube333, max: u8) -> PyResult<Vec<Algorithm>> {
+        solve_step(cube, step_config(StepKind::HTR, "", Some(max)))
+    }
 }
 pub struct HTRFB;
 impl Solvable for HTRFB {
@@ -61,6 +66,9 @@ impl Solvable for HTRFB {
         (vec!(0, 1, 6, 7).contains(&c.id) && facelet == c.facelet_showing_fb()) || // B sticker
             (!c.oriented_rl(pos as u8) && facelet != CORNER_FB_FACELETS[pos])
     }
+    fn solve(&self, cube: &Cube333, max: u8) -> PyResult<Vec<Algorithm>> {
+        solve_step(cube, step_config(StepKind::HTR, "", Some(max)))
+    }
 }
 pub struct HTRRL;
 impl Solvable for HTRRL {
@@ -84,5 +92,8 @@ impl Solvable for HTRRL {
         let c = cube.corners.get_corners()[pos];
         (vec!(1, 2, 5, 6).contains(&c.id) && facelet == c.facelet_showing_rl()) || // L sticker
             (!c.oriented_ud(pos as u8) && facelet != CORNER_RL_FACELETS[pos])
+    }
+    fn solve(&self, cube: &Cube333, max: u8) -> PyResult<Vec<Algorithm>> {
+        solve_step(cube, step_config(StepKind::HTR, "", Some(max)))
     }
 }
