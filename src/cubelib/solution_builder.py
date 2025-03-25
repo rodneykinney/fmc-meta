@@ -10,7 +10,8 @@ class SolutionBuilder:
             kind: str = "",
             variant: str = "",
             previous: Optional["SolutionBuilder"] = None,
-            listener=None
+            listener=None,
+            comment="",
     ):
         self.kind = kind
         self.variant = variant
@@ -19,7 +20,7 @@ class SolutionBuilder:
         self.listener = listener
         self.alg = Algorithm("")
         self.is_checked = False
-        self.comment = ""
+        self.comment = comment
 
     def append_moves(self, moves: List[str], inverse: bool) -> bool:
         if not all(self.allows_move(m) for m in moves):
@@ -62,7 +63,7 @@ class SolutionBuilder:
 
     def reset(self):
         global _builder
-        _builder = SolutionBuilder(self.kind, self.variant, previous=self.previous, listener=self.listener)
+        _builder = SolutionBuilder(self.kind, self.variant, previous=self.previous, listener=self.listener, comment=self.comment)
         self.notify()
 
     def save(self) -> bool:

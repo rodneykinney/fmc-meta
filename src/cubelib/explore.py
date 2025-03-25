@@ -57,9 +57,6 @@ def check(i=0):
     next_steps = NEXT_STEPS.get(key)
     if next_steps:
         _builder.advance_to(*next_steps[0])
-        if _builder.previous:
-            comment = f"{_builder.kind}{_builder.variant if len(next_steps) else ''} {_builder.step_info.case_name(viz.cube)}"
-            _builder.previous.append_comment(comment)
 
 
 def back():
@@ -70,7 +67,7 @@ def back():
 def solve(max: int = 0):
     """Find and save solutions for the current step"""
     algs = _builder.step_info.solve(viz.cube, max)
-    count=0
+    count = 0
     for alg in algs:
         count += 1 if _builder.save_solution(alg) else 0
         if count >= 10:
@@ -81,6 +78,8 @@ def solve(max: int = 0):
 def reset():
     """Reset the cube to the beginning of the current step"""
     _builder.reset()
+    if _inverse:
+        niss()
 
 
 def save():
@@ -92,20 +91,24 @@ def save():
     next_steps = NEXT_STEPS.get((_builder.kind, _builder.variant))
     if next_steps is not None and len(next_steps) == 1:
         _builder.advance_to(*next_steps[0])
-        if _builder.previous:
-            comment = f"{_builder.kind}{_builder.variant if len(next_steps) else ''} {_builder.step_info.case_name(viz.cube)}"
-            _builder.previous.append_comment(comment)
     else:
-        _builder.reset()
+        reset()
 
+
+def mark(comment: str):
+    """Add a comment to the current step solution"""
+    if _builder.step_info.is_solved(viz.cube):
+        _builder.comment = comment
+    elif _builder.previous:
+        _builder.previous.comment = comment
 
 def list():
     """List the saved algorithms for the current step"""
     print(f"{_builder.kind}{_builder.variant}: ")
     for (i, b) in enumerate(_builder.saved_solutions_of_same_step()):
         full_alg = b.full_alg()
-        print(
-            f" {' ' if b.is_checked else '?'}{i + 1}: {full_alg} ({full_alg.len()}) // {b.comment}")
+        comment = f" // {b.comment}" if b.comment else ""
+        print(f" {' ' if b.is_checked else '?'}{i + 1}: {full_alg} ({full_alg.len()}){comment}")
 
 
 def niss():
@@ -160,19 +163,28 @@ def eoud():
 def drud():
     """Look for DR on UD axis"""
     if _set_mode("dr", "ud"):
-        _set_orientation(0, 0, 0)
+        if _builder.previous.variant == "fb":
+            _set_orientation(0, 0, 0)
+        else:
+            _set_orientation(0, -math.pi / 2, 0)
 
 
 def drrl():
     """Look for DR on RL axis"""
     if _set_mode("dr", "rl"):
-        _set_orientation(0, -math.pi / 2, 0)
+        if _builder.previous.variant == "fb":
+            _set_orientation(0, -math.pi / 2, 0)
+        else:
+            _set_orientation(0, -math.pi / 2, math.pi / 2)
 
 
 def drfb():
     """Look for DR on FB axis"""
     if _set_mode("dr", "fb"):
-        _set_orientation(math.pi / 2, 0, 0)
+        if _builder.previous.variant == "ud":
+            _set_orientation(math.pi / 2, 0, 0)
+        else:
+            _set_orientation(math.pi / 2, 0, math.pi / 2)
 
 
 def htr():
@@ -189,7 +201,7 @@ def _set_mode(kind, variant) -> bool:
     step_info = StepInfo(kind, variant)
     if step_info.is_eligible(viz.cube):
         if (not _builder.alg.is_empty()) and not _builder.step_info.is_solved(viz.cube):
-            _builder.reset()
+            reset()
         _builder.advance_to(kind, variant)
         while step_info.is_solved(viz.cube) and _builder.previous:
             _builder.back()
