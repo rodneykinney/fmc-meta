@@ -64,22 +64,37 @@ def back():
     _builder.back()
 
 
-def solve(max: int = 0):
+def solve():
     """Find and save solutions for the current step"""
-    algs = _builder.step_info.solve(viz.cube, max)
-    count = 0
-    for alg in algs:
-        count += 1 if _builder.save_solution(alg) else 0
-        if count >= 10:
-            break
-    list()
-
+    on_inverse = _inverse
+    if on_inverse:
+        niss()
+    if _builder.alg.len() == 0:
+        # Multiple solutions of the full step, auto-save
+        algs = _builder.step_info.solve(viz.cube, 20)
+        count = 0
+        for alg in algs:
+            count += 1 if _builder.save_solution(alg) else 0
+            if count >= 10:
+                break
+        list()
+    else:
+        algs = _builder.step_info.solve(viz.cube, 20)
+        if algs:
+            existing = {f"{a}" for a in _builder.saved_solutions_of_same_step()}
+            for a in algs:
+                if f"{a}" not in existing:
+                    _builder.alg = _builder.alg.merge(a)
+                    _builder.notify()
+                    break
+        else:
+            print("No solution found!")
+    if on_inverse:
+        niss()
 
 def reset():
     """Reset the cube to the beginning of the current step"""
     _builder.reset()
-    if _inverse:
-        niss()
 
 
 def save():

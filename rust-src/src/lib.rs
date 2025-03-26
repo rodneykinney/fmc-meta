@@ -30,6 +30,14 @@ impl Algorithm {
         Ok(Algorithm(alg))
     }
 
+    fn normal_moves(&self) -> Vec<String> {
+        self.0.normal_moves.iter().map(|t| format!("{}", t)).collect()
+    }
+
+    fn inverse_moves(&self) -> Vec<String> {
+        self.0.inverse_moves.iter().map(|t| format!("{}", t)).collect()
+    }
+
     fn is_empty(&self) -> bool {
         self.0.normal_moves.is_empty() && self.0.inverse_moves.is_empty()
     }
@@ -52,6 +60,12 @@ impl Algorithm {
         for turn in other.0.inverse_moves.iter() {
             alg = append_move(&alg, *turn, true);
         }
+        Algorithm(alg)
+    }
+
+    fn inverted(&self) -> Algorithm {
+        let mut alg = self.0.clone();
+        alg.invert();
         Algorithm(alg)
     }
 
