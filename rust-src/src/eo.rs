@@ -33,7 +33,7 @@ impl Solvable for EOUD {
         false
     }
     fn solve(&self, cube: &Cube333, max: u8) -> PyResult<Vec<Algorithm>> {
-        solve_step(cube, step_config(StepKind::EO, "ud", Some(max)))
+        solve_step(cube, step_config(StepKind::EO, "ud", Some(max)), 100, true).map_err(|e| PyValueError::new_err(e))
     }
 }
 pub struct EOFB;
@@ -63,7 +63,7 @@ impl Solvable for EOFB {
         false
     }
     fn solve(&self, cube: &Cube333, max: u8) -> PyResult<Vec<Algorithm>> {
-      solve_step(cube, step_config(StepKind::EO, "fb", Some(max)))
+      solve_step(cube, step_config(StepKind::EO, "fb", Some(max)), 100, true).map_err(|e| PyValueError::new_err(e))
     }
 }
 pub struct EORL;
@@ -93,6 +93,6 @@ impl Solvable for EORL {
         false
     }
     fn solve(&self, cube: &Cube333, max: u8) -> PyResult<Vec<Algorithm>> {
-        solve_step(cube, step_config(StepKind::EO, "lr", Some(max)))
+        solve_step(cube, step_config(StepKind::EO, "lr", Some(max)), 100, true).map_err(|e| PyValueError::new_err(e))
     }
 }

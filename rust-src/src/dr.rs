@@ -50,7 +50,7 @@ impl Solvable for DRUD {
         !c.oriented_ud(pos as u8) && facelet == c.facelet_showing_ud()
     }
     fn solve(&self, cube: &Cube333, max: u8) -> PyResult<Vec<Algorithm>> {
-        solve_step(cube, step_config(StepKind::DR, "ud", Some(max))).map_err(|e| PyValueError::new_err(e))
+        solve_step(cube, step_config(StepKind::DR, "ud", Some(max)), 100, true).map_err(|e| PyValueError::new_err(e))
     }
 }
 
@@ -86,7 +86,7 @@ impl Solvable for DRFB {
         !c.oriented_fb(pos as u8) && facelet == c.facelet_showing_fb()
     }
     fn solve(&self, cube: &Cube333, max: u8) -> PyResult<Vec<Algorithm>> {
-        solve_step(cube, step_config(StepKind::DR, "fb", Some(max))).map_err(|e| PyValueError::new_err(e))
+        solve_step(cube, step_config(StepKind::DR, "fb", Some(max)), 100, true).map_err(|e| PyValueError::new_err(e))
     }
 }
 pub struct DRRL;
@@ -120,6 +120,6 @@ impl Solvable for DRRL {
         !c.oriented_rl(pos as u8) && facelet == c.facelet_showing_rl()
     }
     fn solve(&self, cube: &Cube333, max: u8) -> PyResult<Vec<Algorithm>> {
-        solve_step(cube, step_config(StepKind::DR, "lr", Some(max)))
+        solve_step(cube, step_config(StepKind::DR, "lr", Some(max)), 100, true).map_err(|e| PyValueError::new_err(e))
     }
 }

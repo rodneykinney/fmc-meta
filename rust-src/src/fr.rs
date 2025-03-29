@@ -72,7 +72,7 @@ impl Solvable for FRUD {
         }
     }
     fn solve(&self, cube: &Cube333, max: u8) -> PyResult<Vec<Algorithm>> {
-        solve_step(cube, step_config(StepKind::FRLS, "", Some(max)))
+        solve_step(cube, step_config(StepKind::FRLS, "", Some(max)),100, false).map_err(|e| PyValueError::new_err(e))
     }
 }
 pub struct FRFB;
@@ -142,7 +142,7 @@ impl Solvable for FRFB {
         }
     }
     fn solve(&self, cube: &Cube333, max: u8) -> PyResult<Vec<Algorithm>> {
-        solve_step(cube, step_config(StepKind::FRLS, "", Some(max)))
+        solve_step(cube, step_config(StepKind::FRLS, "", Some(max)),100, false).map_err(|e| PyValueError::new_err(e))
     }
 }
 
@@ -213,7 +213,7 @@ impl Solvable for FRRL {
         }
     }
     fn solve(&self, cube: &Cube333, max: u8) -> PyResult<Vec<Algorithm>> {
-        solve_step(cube, step_config(StepKind::FRLS, "", Some(max)))
+        solve_step(cube, step_config(StepKind::FRLS, "", Some(max)),100, false).map_err(|e| PyValueError::new_err(e))
     }
 }
 

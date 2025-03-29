@@ -4,6 +4,7 @@ use cubelib::cube::Cube333;
 use cubelib::cube::Direction;
 use cubelib::defs::StepKind;
 use cubelib::solver::df_search::CancelToken;
+use cubelib::solver::solve_steps;
 use cubelib::steps::solver::{build_steps, gen_tables};
 use cubelib::steps::step::StepConfig;
 use cubelib::steps::tables::PruningTables333;
@@ -28,7 +29,7 @@ pub fn scramble() -> PyResult<String> {
 
     let steps = build_steps(step_configs, &tables).map_err(|e| PyValueError::new_err(e))?;
     let cancel_token = CancelToken::default();
-    let mut solutions = cubelib::solver::solve_steps(cube, &steps, &cancel_token);
+    let mut solutions = solve_steps(cube, &steps, &cancel_token);
 
     let solution = solutions
         .next()
@@ -58,20 +59,54 @@ pub fn step_config(kind: StepKind, variant: &str, max: Option<u8>) -> StepConfig
         absolute_min: None,
         absolute_max: None,
         step_limit: None,
-        quality: 100,
+        quality: 0,
         niss: None,
         params: Default::default(),
     }
 }
 
-pub fn solve_step(cube: &Cube333, cfg: StepConfig) -> PyResult<Vec<Algorithm>> {
-    let mut tables = PruningTables333::new();
+fn dummy(_: &Algorithm) -> bool {
+    true
+}
 
+pub fn solve_step(
+    cube: &Cube333,
+    cfg: StepConfig,
+    n: usize,
+    require_canonical: bool,
+) -> Result<Vec<Algorithm>, String> {
+    solve_step_impl(cube, cfg, n, require_canonical, false, dummy)
+}
+
+pub fn solve_step_deduplicated<F, T>(
+    cube: &Cube333,
+    cfg: StepConfig,
+    n: usize,
+    require_canonical: bool,
+    unique_fn: F,
+) -> Result<Vec<Algorithm>, String>
+where
+    F: Fn(&Algorithm) -> T,
+    T: Eq + std::hash::Hash,
+{
+    solve_step_impl(cube, cfg, n, require_canonical, true, unique_fn)
+}
+
+fn solve_step_impl<F, T>(
+    cube: &Cube333,
+    cfg: StepConfig,
+    n: usize,
+    require_canonical: bool,
+    require_unique: bool,
+    unique_fn: F,
+) -> Result<Vec<Algorithm>, String>
+where
+    F: Fn(&Algorithm) -> T,
+    T: Eq + std::hash::Hash,
+{
+    let mut tables = Box::new(PruningTables333::new());
     let step_configs = match cfg.kind {
-        StepKind::DR => vec![
-            step_config(StepKind::EO, "", Some(0)),
-            cfg.clone()
-        ],
+        StepKind::DR => vec![step_config(StepKind::EO, "", Some(0)), cfg.clone()],
         StepKind::HTR => vec![
             step_config(StepKind::EO, "", Some(0)),
             step_config(StepKind::DR, "", Some(0)),
@@ -87,26 +122,32 @@ pub fn solve_step(cube: &Cube333, cfg: StepConfig) -> PyResult<Vec<Algorithm>> {
     };
     gen_tables(&step_configs, &mut tables);
 
-    let steps = build_steps(step_configs, &tables).map_err(|e| PyValueError::new_err(e))?;
+    let steps = build_steps(step_configs, &tables)?;
     let cancel_token = CancelToken::default();
-    let solutions = cubelib::solver::solve_steps(cube.clone(), &steps, &cancel_token);
-    let algs = match cfg.kind {
-        StepKind::FIN | StepKind::FR => solutions
-            .map(Into::<LibAlgorithm>::into)
-            .map(Algorithm)
-            .take(100)
-            .collect(),
-        _ => solutions
-            .map(Into::<LibAlgorithm>::into)
-            .map(Algorithm)
-            .filter(is_canonical)
-            .take(100)
-            .collect(),
-    };
-    Ok(algs)
+    let algs = solve_steps(cube.clone(), &steps, &cancel_token)
+        .map(Into::<LibAlgorithm>::into)
+        .map(Algorithm);
+    let algs = algs.filter(|a| !require_canonical || is_canonical(a));
+    match require_unique {
+        true => {
+            let mut unique = std::collections::HashSet::new();
+            let mut v = Vec::new();
+            for alg in algs {
+                let key = unique_fn(&alg);
+                if unique.insert(key) {
+                    v.push(alg);
+                }
+                if v.len() >= n {
+                    break;
+                }
+            }
+            Ok(v)
+        }
+        false => Ok(algs.take(n).collect()),
+    }
 }
 
-fn is_canonical(alg: &Algorithm) -> bool {
+pub fn is_canonical(alg: &Algorithm) -> bool {
     fn is_canonical(vec: &Vec<CubeOuterTurn>) -> bool {
         match vec.len() {
             0 => true,

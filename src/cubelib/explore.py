@@ -71,7 +71,8 @@ def solve():
         niss()
     if _builder.alg.len() == 0:
         # Multiple solutions of the full step, auto-save
-        algs = _builder.step_info.solve(viz.cube, 20)
+        algs = _builder.step_info.solve(viz.cube, 30)
+        logging.debug(f"Found {len(algs)} solutions. Saving")
         count = 0
         for alg in algs:
             count += 1 if _builder.save_solution(alg) else 0
