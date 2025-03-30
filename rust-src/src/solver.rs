@@ -1,5 +1,5 @@
 use cubelib::algs::Algorithm as LibAlgorithm;
-use cubelib::cube::turn::CubeOuterTurn;
+use cubelib::cube::turn::{ApplyAlgorithm, CubeOuterTurn};
 use cubelib::cube::Cube333;
 use cubelib::cube::Direction;
 use cubelib::defs::StepKind;
@@ -19,12 +19,15 @@ pub fn scramble() -> PyResult<String> {
 
     let mut tables = PruningTables333::new();
 
-    let step_configs = vec![
-        step_config(StepKind::EO, "", Some(6)),
-        step_config(StepKind::DR, "", None),
-        step_config(StepKind::HTR, "", None),
-        step_config(StepKind::FIN, "", None),
+    let mut step_configs = vec![
+        step_config(StepKind::EO, ""),
+        step_config(StepKind::DR, ""),
+        step_config(StepKind::HTR, ""),
+        step_config(StepKind::FIN, ""),
     ];
+    step_configs
+        .iter_mut()
+        .for_each(|config| config.quality = 100);
     gen_tables(&step_configs, &mut tables);
 
     let steps = build_steps(step_configs, &tables).map_err(|e| PyValueError::new_err(e))?;
@@ -46,7 +49,7 @@ pub fn scramble() -> PyResult<String> {
     Ok(format!("{}", alg))
 }
 
-pub fn step_config(kind: StepKind, variant: &str, max: Option<u8>) -> StepConfig {
+pub fn step_config(kind: StepKind, variant: &str) -> StepConfig {
     let substeps = match variant {
         "" => None,
         s => Some(vec![s.to_string()]),
@@ -55,7 +58,7 @@ pub fn step_config(kind: StepKind, variant: &str, max: Option<u8>) -> StepConfig
         kind: kind,
         substeps: substeps,
         min: None,
-        max: max,
+        max: None,
         absolute_min: None,
         absolute_max: None,
         step_limit: None,
@@ -65,17 +68,21 @@ pub fn step_config(kind: StepKind, variant: &str, max: Option<u8>) -> StepConfig
     }
 }
 
-fn dummy(_: &Algorithm) -> bool {
-    true
+fn raw(cube: &Cube333, alg: &Algorithm) -> [u64; 3] {
+    let mut cube = cube.clone();
+    cube.apply_alg(&alg.0);
+    let edges = cube.edges.get_edges_raw();
+    let corners = cube.corners.get_corners_raw();
+    [edges[0], edges[1], corners]
 }
 
 pub fn solve_step(
     cube: &Cube333,
     cfg: StepConfig,
-    n: usize,
+    count: usize,
     require_canonical: bool,
-) -> Result<Vec<Algorithm>, String> {
-    solve_step_impl(cube, cfg, n, require_canonical, false, dummy)
+) -> PyResult<Vec<Algorithm>> {
+    solve_step_impl(cube, cfg, count, require_canonical, raw)
 }
 
 pub fn solve_step_deduplicated<F, T>(
@@ -84,67 +91,65 @@ pub fn solve_step_deduplicated<F, T>(
     n: usize,
     require_canonical: bool,
     unique_fn: F,
-) -> Result<Vec<Algorithm>, String>
+) -> PyResult<Vec<Algorithm>>
 where
-    F: Fn(&Algorithm) -> T,
+    F: Fn(&Cube333, &Algorithm) -> T,
     T: Eq + std::hash::Hash,
 {
-    solve_step_impl(cube, cfg, n, require_canonical, true, unique_fn)
+    solve_step_impl(cube, cfg, n, require_canonical, unique_fn)
 }
 
 fn solve_step_impl<F, T>(
     cube: &Cube333,
     cfg: StepConfig,
-    n: usize,
+    count: usize,
     require_canonical: bool,
-    require_unique: bool,
     unique_fn: F,
-) -> Result<Vec<Algorithm>, String>
+) -> PyResult<Vec<Algorithm>>
 where
-    F: Fn(&Algorithm) -> T,
+    F: Fn(&Cube333, &Algorithm) -> T,
     T: Eq + std::hash::Hash,
 {
     let mut tables = Box::new(PruningTables333::new());
-    let step_configs = match cfg.kind {
-        StepKind::DR => vec![step_config(StepKind::EO, "", Some(0)), cfg.clone()],
+    let mut step_configs = match cfg.kind {
+        StepKind::DR => vec![step_config(StepKind::EO, "")],
         StepKind::HTR => vec![
-            step_config(StepKind::EO, "", Some(0)),
-            step_config(StepKind::DR, "", Some(0)),
-            cfg.clone(),
+            step_config(StepKind::EO, ""),
+            step_config(StepKind::DR, ""),
         ],
-        StepKind::FR | StepKind::FINLS => vec![
-            step_config(StepKind::EO, "", Some(0)),
-            step_config(StepKind::DR, "", Some(0)),
-            step_config(StepKind::HTR, "", Some(0)),
-            cfg.clone(),
+        StepKind::FR | StepKind::FRLS | StepKind::FINLS => vec![
+            step_config(StepKind::EO, ""),
+            step_config(StepKind::DR, ""),
+            step_config(StepKind::HTR, ""),
         ],
-        _ => vec![cfg.clone()],
+        _ => vec![],
     };
+    step_configs.iter_mut().for_each(|config| {config.step_limit = Some(1); config.max=Some(0);});
+    step_configs.push(cfg);
     gen_tables(&step_configs, &mut tables);
 
-    let steps = build_steps(step_configs, &tables)?;
+    let steps = build_steps(step_configs, &tables).map_err(PyValueError::new_err)?;
     let cancel_token = CancelToken::default();
     let algs = solve_steps(cube.clone(), &steps, &cancel_token)
         .map(Into::<LibAlgorithm>::into)
         .map(Algorithm);
-    let algs = algs.filter(|a| !require_canonical || is_canonical(a));
-    match require_unique {
-        true => {
-            let mut unique = std::collections::HashSet::new();
-            let mut v = Vec::new();
-            for alg in algs {
-                let key = unique_fn(&alg);
-                if unique.insert(key) {
-                    v.push(alg);
-                }
-                if v.len() >= n {
-                    break;
-                }
-            }
-            Ok(v)
+   let algs = algs.filter(|a| !require_canonical || is_canonical(a));
+    let mut unique = std::collections::HashSet::new();
+    let mut v = Vec::new();
+    let mut seen = 0;
+    for alg in algs {
+        seen += 1;
+        let mut c = cube.clone();
+        c.apply_alg(&alg.0);
+        let key = unique_fn(&c, &alg);
+        if unique.insert(key) {
+            v.push(alg);
         }
-        false => Ok(algs.take(n).collect()),
+        if v.len() >= count || seen > 10000 {
+            break;
+        }
     }
+    Ok(v)
 }
 
 pub fn is_canonical(alg: &Algorithm) -> bool {

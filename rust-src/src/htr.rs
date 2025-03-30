@@ -1,13 +1,13 @@
-use crate::solver::{solve_step, solve_step_deduplicated, step_config};
+use crate::solver::{solve_step_deduplicated, step_config};
 use crate::{
     Algorithm, DrawableCorner, Solvable, CORNER_FB_FACELETS, CORNER_RL_FACELETS,
     CORNER_UD_FACELETS, EDGE_FB_FACELETS, EDGE_RL_FACELETS, EDGE_UD_FACELETS,
 };
-use cubelib::cube::turn::ApplyAlgorithm;
-use cubelib::cube::{Cube333, Direction, Turn333};
+use cubelib::cube::turn::{ApplyAlgorithm, TransformableMut};
+use cubelib::cube::{Cube333, Direction, Transformation333, Turn333};
 use cubelib::defs::StepKind;
-use cubelib::steps::fr::coords::{FRUDNoSliceCoord};
 use cubelib::steps::coord::Coord;
+use cubelib::steps::fr::coords::FRUDNoSliceCoord;
 use pyo3::exceptions::PyValueError;
 use pyo3::PyResult;
 use std::str::FromStr;
@@ -45,20 +45,25 @@ impl Solvable for HTRUD {
         (c.id / 4 == 1 && facelet == c.facelet_showing_ud()) || // D sticker
             (!c.oriented_fb(pos as u8) && facelet != CORNER_UD_FACELETS[pos])
     }
-    fn solve(&self, cube: &Cube333, max: u8) -> PyResult<Vec<Algorithm>> {
-        let unique_fn = |alg: &Algorithm| {
-            let mut c = cube.clone();
-            c.apply_alg(&alg.0);
-            let coord1 = FRUDNoSliceCoord::from(&c);
-            c.apply_alg(&Algorithm::new("U2 D2").unwrap().0);
-            let coord2 = FRUDNoSliceCoord::from(&c);
-            std::cmp::min(coord1.val(), coord2.val())
-        };
-        let algs = solve_step_deduplicated(cube, step_config(StepKind::HTR, "", Some(max)), 100, true, unique_fn)
-            .map_err(|e| PyValueError::new_err(e))?;
-        // let algs = solve_step(cube, step_config(StepKind::HTR, "", Some(max)), 100, true)
-        //     .map_err(|e| PyValueError::new_err(e))?;
-        Ok(algs)
+    fn solve(&self, cube: &Cube333, count: usize) -> PyResult<Vec<Algorithm>> {
+        solve_step_deduplicated(
+            cube,
+            step_config(StepKind::HTR, ""),
+            count,
+            true,
+            is_htr_equivalent(Transformation333::Y),
+        )
+    }
+}
+fn is_htr_equivalent(transform: Transformation333) -> impl Fn(&Cube333, &Algorithm) -> usize {
+    move |cube: &Cube333, _alg: &Algorithm| {
+        let mut cube = cube.clone();
+        cube.transform(transform);
+        let coord1 = FRUDNoSliceCoord::from(&cube);
+        let mut c = cube.clone();
+        c.apply_alg(&Algorithm::new("U2 D2").unwrap().0);
+        let coord2 = FRUDNoSliceCoord::from(&c);
+        std::cmp::min(coord1.val(), coord2.val())
     }
 }
 pub struct HTRFB;
@@ -84,10 +89,14 @@ impl Solvable for HTRFB {
         (vec!(0, 1, 6, 7).contains(&c.id) && facelet == c.facelet_showing_fb()) || // B sticker
             (!c.oriented_rl(pos as u8) && facelet != CORNER_FB_FACELETS[pos])
     }
-    fn solve(&self, cube: &Cube333, max: u8) -> PyResult<Vec<Algorithm>> {
-        let algs = solve_step(cube, step_config(StepKind::HTR, "", Some(max)), 100, true)
-            .map_err(|e| PyValueError::new_err(e))?;
-        Ok(algs)
+    fn solve(&self, cube: &Cube333, count: usize) -> PyResult<Vec<Algorithm>> {
+        solve_step_deduplicated(
+            cube,
+            step_config(StepKind::HTR, ""),
+            count,
+            true,
+            is_htr_equivalent(Transformation333::X),
+        )
     }
 }
 pub struct HTRRL;
@@ -113,10 +122,14 @@ impl Solvable for HTRRL {
         (vec!(1, 2, 5, 6).contains(&c.id) && facelet == c.facelet_showing_rl()) || // L sticker
             (!c.oriented_ud(pos as u8) && facelet != CORNER_RL_FACELETS[pos])
     }
-    fn solve(&self, cube: &Cube333, max: u8) -> PyResult<Vec<Algorithm>> {
-        let algs = solve_step(cube, step_config(StepKind::HTR, "", Some(max)), 100, true)
-            .map_err(|e| PyValueError::new_err(e))?;
-        Ok(algs)
+    fn solve(&self, cube: &Cube333, count: usize) -> PyResult<Vec<Algorithm>> {
+        solve_step_deduplicated(
+            cube,
+            step_config(StepKind::HTR, ""),
+            count,
+            true,
+            is_htr_equivalent(Transformation333::Z),
+        )
     }
 }
 
@@ -138,10 +151,12 @@ mod tests {
 
     #[test]
     fn test_find() {
-        let scramble = "F' R F R B R2 D R2 B' D F' L2 D2 L2 B' L2 B R2 D2 F2 U2 L2 B2 R2 U' F' U' L D' L";
+        let scramble =
+            "F2 U R' D F2 D F2 B2 U B2 R2 U2 L2 R2 B2 U2 R2 B' U' B D' F' R2 B' R U2 B R U' L2 F D F U' B U";
+        // R U2 B R U' L2 F D F U' B U R2 F R2 U2 F D2 F' D2 F R2 B (23)
         let mut cube = Cube333::default();
         cube.apply_alg(&LibAlgorithm::from_str(scramble).unwrap());
-        let algs = HTRUD.solve(&cube, 100).unwrap();
+        let algs = HTRFB.solve(&cube, 100).unwrap();
         assert_ne!(algs.len(), 0);
     }
 }

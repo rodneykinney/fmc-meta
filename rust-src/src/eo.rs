@@ -32,8 +32,8 @@ impl Solvable for EOUD {
     fn should_draw_corner(&self, _cube: &Cube333, _pos: usize, _facelet: u8) -> bool {
         false
     }
-    fn solve(&self, cube: &Cube333, max: u8) -> PyResult<Vec<Algorithm>> {
-        solve_step(cube, step_config(StepKind::EO, "ud", Some(max)), 100, true).map_err(|e| PyValueError::new_err(e))
+    fn solve(&self, cube: &Cube333, count: usize) -> PyResult<Vec<Algorithm>> {
+        solve_step(cube, step_config(StepKind::EO, "ud"), count, true)
     }
 }
 pub struct EOFB;
@@ -62,8 +62,8 @@ impl Solvable for EOFB {
     fn should_draw_corner(&self, _cube: &Cube333, _pos: usize, _facelet: u8) -> bool {
         false
     }
-    fn solve(&self, cube: &Cube333, max: u8) -> PyResult<Vec<Algorithm>> {
-      solve_step(cube, step_config(StepKind::EO, "fb", Some(max)), 100, true).map_err(|e| PyValueError::new_err(e))
+    fn solve(&self, cube: &Cube333, count: usize) -> PyResult<Vec<Algorithm>> {
+      solve_step(cube, step_config(StepKind::EO, "fb"), count, true)
     }
 }
 pub struct EORL;
@@ -92,7 +92,7 @@ impl Solvable for EORL {
     fn should_draw_corner(&self, _cube: &Cube333, _pos: usize, _facelet: u8) -> bool {
         false
     }
-    fn solve(&self, cube: &Cube333, max: u8) -> PyResult<Vec<Algorithm>> {
-        solve_step(cube, step_config(StepKind::EO, "lr", Some(max)), 100, true).map_err(|e| PyValueError::new_err(e))
+    fn solve(&self, cube: &Cube333, count: usize) -> PyResult<Vec<Algorithm>> {
+        solve_step(cube, step_config(StepKind::EO, "lr"), count, true)
     }
 }

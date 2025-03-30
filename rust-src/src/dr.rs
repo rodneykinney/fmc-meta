@@ -49,8 +49,8 @@ impl Solvable for DRUD {
         let c = cube.corners.get_corners()[pos];
         !c.oriented_ud(pos as u8) && facelet == c.facelet_showing_ud()
     }
-    fn solve(&self, cube: &Cube333, max: u8) -> PyResult<Vec<Algorithm>> {
-        solve_step(cube, step_config(StepKind::DR, "ud", Some(max)), 100, true).map_err(|e| PyValueError::new_err(e))
+    fn solve(&self, cube: &Cube333, count: usize) -> PyResult<Vec<Algorithm>> {
+        solve_step(cube, step_config(StepKind::DR, "ud"), count, true)
     }
 }
 
@@ -85,8 +85,8 @@ impl Solvable for DRFB {
         let c = cube.corners.get_corners()[pos];
         !c.oriented_fb(pos as u8) && facelet == c.facelet_showing_fb()
     }
-    fn solve(&self, cube: &Cube333, max: u8) -> PyResult<Vec<Algorithm>> {
-        solve_step(cube, step_config(StepKind::DR, "fb", Some(max)), 100, true).map_err(|e| PyValueError::new_err(e))
+    fn solve(&self, cube: &Cube333, count: usize) -> PyResult<Vec<Algorithm>> {
+        solve_step(cube, step_config(StepKind::DR, "fb"), count, true)
     }
 }
 pub struct DRRL;
@@ -119,7 +119,7 @@ impl Solvable for DRRL {
         let c = cube.corners.get_corners()[pos];
         !c.oriented_rl(pos as u8) && facelet == c.facelet_showing_rl()
     }
-    fn solve(&self, cube: &Cube333, max: u8) -> PyResult<Vec<Algorithm>> {
-        solve_step(cube, step_config(StepKind::DR, "lr", Some(max)), 100, true).map_err(|e| PyValueError::new_err(e))
+    fn solve(&self, cube: &Cube333, count: usize) -> PyResult<Vec<Algorithm>> {
+        solve_step(cube, step_config(StepKind::DR, "lr"), count, true)
     }
 }

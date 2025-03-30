@@ -69,9 +69,10 @@ def solve():
     on_inverse = _inverse
     if on_inverse:
         niss()
+    n_existing = len(_builder.saved_solutions_of_same_step())
     if _builder.alg.len() == 0:
         # Multiple solutions of the full step, auto-save
-        algs = _builder.step_info.solve(viz.cube, 30)
+        algs = _builder.step_info.solve(viz.cube, n_existing+10)
         logging.debug(f"Found {len(algs)} solutions. Saving")
         count = 0
         for alg in algs:
@@ -80,7 +81,7 @@ def solve():
                 break
         list()
     else:
-        algs = _builder.step_info.solve(viz.cube, 20)
+        algs = _builder.step_info.solve(viz.cube, n_existing+1)
         if algs:
             existing = {f"{a}" for a in _builder.saved_solutions_of_same_step()}
             for a in algs:

@@ -310,8 +310,8 @@ impl StepInfo {
         Ok(self.step().map_err(|e|PyValueError::new_err(e.to_string()))?.should_draw_corner(&cube.0, pos, facelet))
     }
 
-    fn solve(&self, cube: &Cube, max: u8) -> PyResult<Vec<Algorithm>> {
-        self.step().map_err(|e|PyValueError::new_err(e.to_string()))?.solve(&cube.0, max)
+    fn solve(&self, cube: &Cube, count: usize) -> PyResult<Vec<Algorithm>> {
+        self.step().map_err(|e|PyValueError::new_err(e.to_string()))?.solve(&cube.0, count)
     }
 
     #[new]
@@ -330,7 +330,7 @@ trait Solvable {
     fn case_name(&self, cube: &Cube333) -> String;
     fn should_draw_edge(&self, cube: &Cube333, pos: usize, facelet: u8) -> bool;
     fn should_draw_corner(&self, cube: &Cube333, pos: usize, facelet: u8) -> bool;
-    fn solve(&self, cube: &Cube333, max: u8) -> PyResult<Vec<Algorithm>>;
+    fn solve(&self, cube: &Cube333, count: usize) -> PyResult<Vec<Algorithm>>;
 }
 struct StepBuilder;
 impl StepBuilder {
@@ -387,7 +387,7 @@ impl Solvable for SCRAMBLED {
     fn should_draw_corner(&self, _cube: &Cube333, _pos: usize, _facelet: u8) -> bool {
         true
     }
-    fn solve(&self, _cube: &Cube333, _max: u8) -> PyResult<Vec<Algorithm>> {
+    fn solve(&self, _cube: &Cube333, _count: usize) -> PyResult<Vec<Algorithm>> {
         Err(PyValueError::new_err("Direct solver is not implemented"))
     }
 }
