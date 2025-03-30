@@ -44,6 +44,12 @@ class SolutionBuilder:
             return self.previous.full_alg().merge(self.alg)
         return self.alg
 
+    def substeps(self) -> List["SolutionBuilder"]:
+        if self.previous is None:
+            return [self]
+        else:
+            return self.previous.substeps() + [self]
+
     def back(self):
         global _builder
 

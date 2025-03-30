@@ -123,9 +123,9 @@ def list():
     """List the saved algorithms for the current step"""
     print(f"{_builder.kind}{_builder.variant}: ")
     for (i, b) in enumerate(_builder.saved_solutions_of_same_step()):
-        full_alg = b.full_alg()
-        comment = f" // {b.comment}" if b.comment else ""
-        print(f" {' ' if b.is_checked else '?'}{i + 1}: {full_alg} ({full_alg.len()}){comment}")
+        steps = b.substeps()
+        summary = "\n      ".join([f"{s.alg} // {s.kind} ({s.full_alg().len()})" for s in steps])
+        print(f" {' ' if b.is_checked else '?'}{i + 1:02d}: {summary}")
 
 
 def niss():
