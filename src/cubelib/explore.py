@@ -33,9 +33,9 @@ NEXT_STEPS = {
     ("htr", "ud"): [("fr", "ud")],
     ("htr", "rl"): [("fr", "rl")],
     ("htr", "fb"): [("fr", "fb")],
-    ("fr", "ud"): [("slice", "")],
-    ("fr", "fr"): [("slice", "")],
-    ("fr", "rl"): [("slice", "")],
+    ("fr", "ud"): [("slice", "ud")],
+    ("fr", "fb"): [("slice", "fb")],
+    ("fr", "rl"): [("slice", "rl")],
 }
 
 _running = True

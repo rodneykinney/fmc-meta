@@ -90,13 +90,13 @@ pub fn solve_step_deduplicated<F, T>(
     cfg: StepConfig,
     n: usize,
     require_canonical: bool,
-    unique_fn: F,
+    case_id: F,
 ) -> PyResult<Vec<Algorithm>>
 where
     F: Fn(&Cube333, &Algorithm) -> T,
     T: Eq + std::hash::Hash,
 {
-    solve_step_impl(cube, cfg, n, require_canonical, unique_fn)
+    solve_step_impl(cube, cfg, n, require_canonical, case_id)
 }
 
 fn solve_step_impl<F, T>(
@@ -104,7 +104,7 @@ fn solve_step_impl<F, T>(
     cfg: StepConfig,
     count: usize,
     require_canonical: bool,
-    unique_fn: F,
+    case_id: F,
 ) -> PyResult<Vec<Algorithm>>
 where
     F: Fn(&Cube333, &Algorithm) -> T,
@@ -134,22 +134,22 @@ where
         .map(Into::<LibAlgorithm>::into)
         .map(Algorithm);
    let algs = algs.filter(|a| !require_canonical || is_canonical(a));
-    let mut unique = std::collections::HashSet::new();
-    let mut v = Vec::new();
+    let mut seen_ids = std::collections::HashSet::new();
+    let mut deduped_algs = Vec::new();
     let mut seen = 0;
     for alg in algs {
         seen += 1;
         let mut c = cube.clone();
         c.apply_alg(&alg.0);
-        let key = unique_fn(&c, &alg);
-        if unique.insert(key) {
-            v.push(alg);
+        let id = case_id(&c, &alg);
+        if seen_ids.insert(id) {
+            deduped_algs.push(alg);
         }
-        if v.len() >= count || seen > 10000 {
+        if deduped_algs.len() >= count || seen > 10000 {
             break;
         }
     }
-    Ok(v)
+    Ok(deduped_algs)
 }
 
 pub fn is_canonical(alg: &Algorithm) -> bool {

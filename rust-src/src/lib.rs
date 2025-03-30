@@ -3,6 +3,7 @@ mod eo;
 mod fr;
 mod htr;
 mod solver;
+mod slice;
 
 use pyo3::prelude::*;
 use std::str::FromStr;
@@ -15,6 +16,7 @@ use cubelib::cube::{Corner, Cube333, Turn333};
 use crate::dr::{DRFB, DRRL, DRUD};
 use crate::eo::{EOFB, EORL, EOUD};
 use crate::fr::{FRFB, FRRL, FRUD};
+use crate::slice::{SliceUD, SliceFB, SliceRL};
 use crate::htr::{HTRFB, HTRRL, HTRUD};
 use crate::solver::scramble;
 
@@ -358,6 +360,12 @@ impl StepBuilder {
                 "ud" => Ok(Box::new(FRUD)),
                 "fb" => Ok(Box::new(FRFB)),
                 "rl" => Ok(Box::new(FRRL)),
+                _ => Err(format!("Unknown variant '{}' for dr", variant).into()),
+            },
+            "slice" => match variant {
+                "ud" => Ok(Box::new(SliceUD)),
+                "fb" => Ok(Box::new(SliceFB)),
+                "rl" => Ok(Box::new(SliceRL)),
                 _ => Err(format!("Unknown variant '{}' for dr", variant).into()),
             },
             "" => Ok(Box::new(SCRAMBLED)),

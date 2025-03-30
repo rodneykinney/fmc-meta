@@ -339,7 +339,7 @@ class CubeViz():
             10, y)
         b = self.builder.previous
         while b is not None:
-            y += write(f"{b.alg} // {b.kind}",10, y)
+            y += write(f"{b.alg} // {b.kind} ({b.full_alg().len()})",10, y)
             b = b.previous
 
         write(

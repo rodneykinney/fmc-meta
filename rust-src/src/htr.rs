@@ -51,11 +51,11 @@ impl Solvable for HTRUD {
             step_config(StepKind::HTR, ""),
             count,
             true,
-            is_htr_equivalent(Transformation333::Y),
+            is_equivalent(Transformation333::Y),
         )
     }
 }
-fn is_htr_equivalent(transform: Transformation333) -> impl Fn(&Cube333, &Algorithm) -> usize {
+fn is_equivalent(transform: Transformation333) -> impl Fn(&Cube333, &Algorithm) -> usize {
     move |cube: &Cube333, _alg: &Algorithm| {
         let mut cube = cube.clone();
         cube.transform(transform);
@@ -95,7 +95,7 @@ impl Solvable for HTRFB {
             step_config(StepKind::HTR, ""),
             count,
             true,
-            is_htr_equivalent(Transformation333::X),
+            is_equivalent(Transformation333::X),
         )
     }
 }
@@ -128,7 +128,7 @@ impl Solvable for HTRRL {
             step_config(StepKind::HTR, ""),
             count,
             true,
-            is_htr_equivalent(Transformation333::Z),
+            is_equivalent(Transformation333::Z),
         )
     }
 }
