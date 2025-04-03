@@ -1,4 +1,4 @@
-from typing import Optional, Dict, List, Tuple
+from typing import Optional, Dict, List, Tuple, Callable
 from collections import defaultdict
 
 from py_cubelib import Algorithm, StepInfo, debug
@@ -10,14 +10,12 @@ class SolutionBuilder:
             kind: str = "",
             variant: str = "",
             previous: Optional["SolutionBuilder"] = None,
-            listener=None,
             comment="",
     ):
         self.kind = kind
         self.variant = variant
         self.step_info = StepInfo(kind, variant)
         self.previous = previous
-        self.listener = listener
         self.alg = Algorithm("")
         self.is_checked = False
         self.comment = comment
@@ -28,7 +26,7 @@ class SolutionBuilder:
 
         for m in moves:
             self._add_move(m, inverse)
-        self.notify()
+        notify()
         return True
 
     def _add_move(self, move: str, inverse: bool):
@@ -54,23 +52,20 @@ class SolutionBuilder:
         global _builder
 
         if self.previous is None:
-            _builder = SolutionBuilder(listener=self.listener)
-            self.notify()
+            _builder = SolutionBuilder()
+            notify()
             return
 
-        previous = self.previous.previous or SolutionBuilder(listener=self.listener)
+        previous = self.previous.previous or SolutionBuilder()
 
         previous.advance_to(self.previous.kind, self.previous.variant)
 
 
-    def notify(self):
-        if self.listener is not None:
-            self.listener(_builder)
 
     def reset(self):
         global _builder
-        _builder = SolutionBuilder(self.kind, self.variant, previous=self.previous, listener=self.listener, comment=self.comment)
-        self.notify()
+        _builder = SolutionBuilder(self.kind, self.variant, previous=self.previous, comment=self.comment)
+        notify()
 
     def save(self) -> bool:
         existing = _steps[(self.kind, self.variant)]
@@ -87,7 +82,6 @@ class SolutionBuilder:
                 kind=self.kind,
                 variant=self.variant,
                 previous=self.previous,
-                listener=self.listener
             )
         b.alg = alg
         existing.append(b)
@@ -103,9 +97,9 @@ class SolutionBuilder:
     def advance_to(self, kind: str, variant: str):
         global _builder
         previous = self if not self.alg.is_empty() else self.previous
-        _builder = SolutionBuilder(kind, variant, previous=previous, listener=self.listener)
+        _builder = SolutionBuilder(kind, variant, previous=previous)
         self.is_checked = True
-        self.notify()
+        notify()
 
     def append_comment(self, str):
         self.comment = f"{self.comment}{' ' if self.comment else ''}{str}"
@@ -116,15 +110,15 @@ class SolutionBuilder:
     def clear(self):
         global _builder
         _steps.clear()
-        _builder = SolutionBuilder("", "", previous=None, listener=self.listener)
-        self.notify()
+        _builder = SolutionBuilder("", "", previous=None)
+        notify()
 
     def load(self, index: int):
         global _builder
         l = _steps.get((self.kind, self.variant), list())
         if l and index <= len(l):
             _builder = l[index]
-            self.notify()
+            notify()
 
 
 
@@ -132,3 +126,9 @@ class SolutionBuilder:
 _steps: Dict[Tuple[str, str], List[SolutionBuilder]] = defaultdict(list)
 # The algorithm currently being built
 _builder: SolutionBuilder = SolutionBuilder("", "")
+
+_listener: Optional[Callable[[SolutionBuilder], None]] = None
+def notify():
+    if _listener is not None:
+        _listener(_builder)
+

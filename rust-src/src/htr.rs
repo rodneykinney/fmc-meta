@@ -72,13 +72,22 @@ impl Solvable for HTRFB {
         HTRUD.is_move_allowed(s)
     }
     fn is_solved(&self, cube: &Cube333) -> bool {
-        HTRUD.is_solved(cube)
+        match cube.get_dr_subset() {
+            Some(s) => s.qt == 0,
+            _ => false,
+        }
     }
     fn is_eligible(&self, cube: &Cube333) -> bool {
-        HTRUD.is_eligible(cube)
+        match cube.get_dr_subset() {
+            Some(_) => true,
+            _ => false,
+        }
     }
     fn case_name(&self, cube: &Cube333) -> String {
-        HTRUD.case_name(cube)
+        match cube.get_dr_subset() {
+            Some(s) => s.to_string(),
+            _ => "".to_string(),
+        }
     }
     fn should_draw_edge(&self, cube: &Cube333, pos: usize, facelet: u8) -> bool {
         let e = cube.edges.get_edges()[pos];

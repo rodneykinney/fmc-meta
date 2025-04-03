@@ -26,14 +26,16 @@ impl Solvable for SliceUD {
         "".to_string()
     }
 
-    fn should_draw_edge(&self, cube: &Cube333, pos: usize, _facelet: u8) -> bool {
-        let e = cube.edges.get_edges()[pos];
-        e.id != pos as u8
+    fn should_draw_edge(&self, _cube: &Cube333, _pos: usize, _facelet: u8) -> bool {
+        true
+        // let e = cube.edges.get_edges()[pos];
+        // e.id != pos as u8
     }
 
-    fn should_draw_corner(&self, cube: &Cube333, pos: usize, _facelet: u8) -> bool {
-        let c = cube.corners.get_corners()[pos];
-        c.id != pos as u8
+    fn should_draw_corner(&self, _cube: &Cube333, _pos: usize, _facelet: u8) -> bool {
+        true
+        // let c = cube.corners.get_corners()[pos];
+        // c.id != pos as u8
     }
     fn solve(&self, cube: &Cube333, count: usize) -> PyResult<Vec<Algorithm>> {
         solve_step(cube, step_config(StepKind::FINLS, ""), count, false)
@@ -59,14 +61,16 @@ impl Solvable for SliceFB {
         "".to_string()
     }
 
-    fn should_draw_edge(&self, cube: &Cube333, pos: usize, _facelet: u8) -> bool {
-        let e = cube.edges.get_edges()[pos];
-        e.id != pos as u8
+    fn should_draw_edge(&self, _cube: &Cube333, _pos: usize, _facelet: u8) -> bool {
+        // let e = cube.edges.get_edges()[pos];
+        // e.id != pos as u8
+        true
     }
 
-    fn should_draw_corner(&self, cube: &Cube333, pos: usize, _facelet: u8) -> bool {
-        let c = cube.corners.get_corners()[pos];
-        c.id != pos as u8
+    fn should_draw_corner(&self, _cube: &Cube333, _pos: usize, _facelet: u8) -> bool {
+        // let c = cube.corners.get_corners()[pos];
+        // c.id != pos as u8
+        true
     }
     fn solve(&self, cube: &Cube333, count: usize) -> PyResult<Vec<Algorithm>> {
         solve_step(cube, step_config(StepKind::FINLS, ""), count, false)
@@ -93,14 +97,16 @@ impl Solvable for SliceRL {
         "".to_string()
     }
 
-    fn should_draw_edge(&self, cube: &Cube333, pos: usize, _facelet: u8) -> bool {
-        let e = cube.edges.get_edges()[pos];
-        e.id != pos as u8
+    fn should_draw_edge(&self, _cube: &Cube333, _pos: usize, _facelet: u8) -> bool {
+        // let e = cube.edges.get_edges()[pos];
+        // e.id != pos as u8
+        true
     }
 
-    fn should_draw_corner(&self, cube: &Cube333, pos: usize, _facelet: u8) -> bool {
-        let c = cube.corners.get_corners()[pos];
-        c.id != pos as u8
+    fn should_draw_corner(&self, _cube: &Cube333, _pos: usize, _facelet: u8) -> bool {
+        // let c = cube.corners.get_corners()[pos];
+        // c.id != pos as u8
+        false
     }
     fn solve(&self, cube: &Cube333, count: usize) -> PyResult<Vec<Algorithm>> {
         solve_step(cube, step_config(StepKind::FINLS, ""), count, false)

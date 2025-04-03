@@ -6,8 +6,10 @@ import traceback
 import logging
 import math
 import curses
-from builtins import (list as llist)
 import inspect
+
+import cubelib.solution_builder
+from cubelib.solution_builder import SolutionBuilder
 
 logging.basicConfig(
     filename="fmc-meta.log", filemode="w",
@@ -52,6 +54,7 @@ def scramble(str: Optional[str] = None):
 
 def check(i=0):
     """Load and check the numbered algorithm"""
+    global _builder
     _builder.load(i - 1)
     key = (_builder.kind, _builder.variant)
     next_steps = NEXT_STEPS.get(key)
@@ -102,7 +105,19 @@ def reset():
 def save():
     """Save this algorithm and start a new one"""
     if not _builder.step_info.is_solved(viz.cube):
-        print(f"Cube is not in {_builder.kind}{_builder.variant}")
+        if _builder.kind == "" or _builder.previous is None:
+            print("Complete at least one step before saving")
+            return
+        partial = SolutionBuilder(
+                kind=_builder.previous.kind,
+                variant=_builder.previous.variant,
+                previous=_builder.previous.previous,
+            )
+        partial.alg = _builder.previous.alg.merge(_builder.alg)
+        options = NEXT_STEPS[(partial.kind, partial.variant)]
+        case = _builder.step_info.case_name(viz.cube)
+        partial.comment = f"{partial.variant}-{case}" if len(options) > 1 else case
+        partial.save()
         return
     _builder.save()
     next_steps = NEXT_STEPS.get((_builder.kind, _builder.variant))
@@ -124,7 +139,7 @@ def list():
     print(f"{_builder.kind}{_builder.variant}: ")
     for (i, b) in enumerate(_builder.saved_solutions_of_same_step()):
         steps = b.substeps()
-        summary = "\n      ".join([f"{s.alg} // {s.kind} ({s.full_alg().len()})" for s in steps])
+        summary = "\n      ".join([f"{s.alg} // {s.kind} ({s.full_alg().len()}) {s.comment}" for s in steps])
         print(f" {' ' if b.is_checked else '?'}{i + 1:02d}: {summary}")
 
 
@@ -137,8 +152,22 @@ def niss():
 
 
 def _append_moves(moves):
-    if not _builder.append_moves(moves.split(" "), _inverse):
-        print(f"{moves} not allowed after {_builder.previous.kind}{_builder.previous.variant}")
+    moves = moves.split(" ")
+    if _builder.alg.len() > 0:
+        if not _builder.append_moves(moves, _inverse):
+            print(f"{moves} not allowed after {_builder.previous.kind}{_builder.previous.variant}")
+    else:
+        if not _builder.append_moves(moves, _inverse):
+            assert _builder.previous is not None
+            if all(_builder.previous.allows_move(m) for m in moves):
+                alg = _builder.previous.alg
+                _builder.back()
+                _builder.append_moves(f"{alg}".split(" "), _inverse)
+                _builder.append_moves(moves, _inverse)
+            else:
+                print(f"{moves} not allowed after {_builder.previous.kind}{_builder.previous.variant}")
+
+
 
 
 def _set_orientation(x, y, z):
@@ -364,7 +393,7 @@ def update(builder):
 
 
 if __name__ == "__main__":
-    _builder.listener = update
+    cubelib.solution_builder._listener = update
     viz.update(_builder)
     threading.Thread(target=lambda: curses.wrapper(read_commands)).start()
     # scramble()
