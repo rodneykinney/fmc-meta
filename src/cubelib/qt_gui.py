@@ -193,15 +193,16 @@ class CubeExplorer(QMainWindow):
     def refresh_current_solution(self):
         curr = _current()
         self.current_solution.clear()
-        self.current_solution.addItem("self.viz.scramble")
+        self.current_solution.addItem(self.viz.scramble)
         self.current_solution.addItem("")
         for step in _current().substeps():
-            comment = ""
-            if step.step_info.is_solved(self.viz.cube):
-                comment = f"{step.kind} ({step.full_alg().len()}) {step.comment}"
-            else:
-                comment = f"{step.kind}-{step.step_info.case_name(self.viz.cube)} {step.comment}"
-            self.current_solution.addItem(f"{step.alg} // {comment}")
+            item = f"{step.alg}"
+            if step.kind != "":
+                if step.step_info.is_solved(self.viz.cube):
+                    item = f"{item} // {step.kind} ({step.full_alg().len()}) {step.comment}"
+                else:
+                    item = f"{item}{' ( )' if self.viz.inverse else ''} // {step.kind}-{step.step_info.case_name(self.viz.cube)} {step.comment}"
+            self.current_solution.addItem(item)
 
     def _update_step(self, old_builder, new_builder):
         """Handle step changes"""
@@ -315,6 +316,7 @@ class CubeExplorer(QMainWindow):
         """Switch between normal and inverse scramble"""
         self.viz.set_inverse(not self.viz.inverse)
         self.gl_widget.update_cube()
+        self.refresh_current_solution()
     
     def _set_mode(self, kind, variant) -> bool:
         """Change to a specific solving step"""
