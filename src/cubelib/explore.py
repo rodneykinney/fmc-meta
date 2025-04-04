@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Optional, Tuple
 import io
 import threading
 import sys
@@ -11,6 +11,11 @@ import inspect
 import cubelib.solution_builder
 from cubelib.solution_builder import SolutionBuilder
 
+
+def _current() -> SolutionBuilder:
+    return cubelib.solution_builder._current
+
+
 logging.basicConfig(
     filename="fmc-meta.log", filemode="w",
     level=logging.DEBUG,
@@ -22,7 +27,6 @@ import cubelib.solution_builder
 from py_cubelib import debug, scramble as gen_scramble, StepInfo
 
 viz = CubeViz()
-_builder = cubelib.solution_builder._builder
 _inverse = False
 
 NEXT_STEPS = {
@@ -40,6 +44,25 @@ NEXT_STEPS = {
     ("fr", "rl"): [("slice", "rl")],
 }
 
+PREFERRED_AXIS = {
+    ("eo", "ud"): (["fb","rl"], ["ud"]),
+    ("eo", "rl"): (["ud","fb"], ["rl"]),
+    ("eo", "fb"): (["ud","rl"], ["fb"]),
+    ("*", "ud"): (["ud"], ["fb","rl"]),
+    ("*", "fb"): (["fb"], ["ud","rl"]),
+    ("*", "rl"): (["rl"], ["fb","ud"]),
+    ("*", "*"): (["ud"], ["fb","rl"]),
+}
+
+AXIS_ORIENTATIONS = {
+    ("ud", "fb"): (0, 0, 0),
+    ("ud", "rl"): (0, 0, -math.pi / 2),
+    ("fb", "ud"): (math.pi / 2, 0, 0),
+    ("fb", "rl"): (math.pi / 2, 0, -math.pi / 2),
+    ("rl", "fb"): (0, -math.pi / 2, 0),
+    ("rl", "ud"): (0, -math.pi / 2, math.pi / 2),
+}
+
 _running = True
 
 
@@ -49,97 +72,101 @@ def scramble(str: Optional[str] = None):
         str = gen_scramble()
     print(str)
     viz.set_scramble(str)
-    _builder.clear()
+    _current().clear()
 
 
 def check(i=0):
     """Load and check the numbered algorithm"""
-    global _builder
-    _builder.load(i - 1)
-    key = (_builder.kind, _builder.variant)
+    _current().load(i - 1)
+    key = (_current().kind, _current().variant)
     next_steps = NEXT_STEPS.get(key)
     if next_steps:
-        _builder.advance_to(*next_steps[0])
+        _current().advance_to(*next_steps[0])
 
 
 def back():
     """Go back to the previous step"""
-    _builder.back()
+    _current().back()
 
 
 def solve():
     """Find and save solutions for the current step"""
+    curr = _current()
     on_inverse = _inverse
     if on_inverse:
         niss()
-    n_existing = len(_builder.saved_solutions_of_same_step())
-    if _builder.alg.len() == 0:
+    n_existing = len(curr.saved_solutions_of_same_step())
+    if curr.alg.len() == 0:
         # Multiple solutions of the full step, auto-save
-        algs = _builder.step_info.solve(viz.cube, n_existing+10)
+        algs = curr.step_info.solve(viz.cube, n_existing + 10)
         logging.debug(f"Found {len(algs)} solutions. Saving")
         count = 0
         for alg in algs:
-            count += 1 if _builder.save_solution(alg) else 0
+            count += 1 if curr.save_solution(alg) else 0
             if count >= 10:
                 break
         list()
     else:
-        algs = _builder.step_info.solve(viz.cube, n_existing+1)
+        algs = curr.step_info.solve(viz.cube, n_existing + 1)
         if algs:
-            existing = {f"{a}" for a in _builder.saved_solutions_of_same_step()}
+            existing = {f"{a}" for a in curr.saved_solutions_of_same_step()}
             for a in algs:
                 if f"{a}" not in existing:
-                    _builder.alg = _builder.alg.merge(a)
-                    _builder.notify()
+                    curr.alg = curr.alg.merge(a)
+                    cubelib.solution_builder.update(curr)
                     break
         else:
             print("No solution found!")
     if on_inverse:
         niss()
 
+
 def reset():
     """Reset the cube to the beginning of the current step"""
-    _builder.reset()
+    _current().reset()
 
 
 def save():
     """Save this algorithm and start a new one"""
-    if not _builder.step_info.is_solved(viz.cube):
-        if _builder.kind == "" or _builder.previous is None:
+    curr = _current()
+    if not curr.step_info.is_solved(viz.cube):
+        if curr.kind == "" or curr.previous is None:
             print("Complete at least one step before saving")
             return
         partial = SolutionBuilder(
-                kind=_builder.previous.kind,
-                variant=_builder.previous.variant,
-                previous=_builder.previous.previous,
-            )
-        partial.alg = _builder.previous.alg.merge(_builder.alg)
+            kind=curr.previous.kind,
+            variant=curr.previous.variant,
+            previous=curr.previous.previous,
+        )
+        partial.alg = curr.previous.alg.merge(curr.alg)
         options = NEXT_STEPS[(partial.kind, partial.variant)]
-        case = _builder.step_info.case_name(viz.cube)
-        partial.comment = f"{partial.variant}-{case}" if len(options) > 1 else case
+        case = curr.step_info.case_name(viz.cube)
+        partial.comment = f"{curr.kind}{curr.variant}-{case}" if len(options) > 1 else case
         partial.save()
         return
-    _builder.save()
-    next_steps = NEXT_STEPS.get((_builder.kind, _builder.variant))
+    curr.save()
+    next_steps = NEXT_STEPS.get((curr.kind, curr.variant))
     if next_steps is not None and len(next_steps) == 1:
-        _builder.advance_to(*next_steps[0])
+        curr.advance_to(*next_steps[0])
     else:
         reset()
 
 
 def mark(comment: str):
     """Add a comment to the current step solution"""
-    if _builder.step_info.is_solved(viz.cube):
-        _builder.comment = comment
-    elif _builder.previous:
-        _builder.previous.comment = comment
+    if _current().step_info.is_solved(viz.cube):
+        _current().comment = comment
+    elif _current().previous:
+        _current().previous.comment = comment
+
 
 def list():
     """List the saved algorithms for the current step"""
-    print(f"{_builder.kind}{_builder.variant}: ")
-    for (i, b) in enumerate(_builder.saved_solutions_of_same_step()):
+    print(f"{_current().kind}{_current().variant}: ")
+    for (i, b) in enumerate(_current().saved_solutions_of_same_step()):
         steps = b.substeps()
-        summary = "\n      ".join([f"{s.alg} // {s.kind} ({s.full_alg().len()}) {s.comment}" for s in steps])
+        summary = "\n      ".join(
+            [f"{s.alg} // {s.kind} ({s.full_alg().len()}) {s.comment}" for s in steps])
         print(f" {' ' if b.is_checked else '?'}{i + 1:02d}: {summary}")
 
 
@@ -148,26 +175,37 @@ def niss():
     global _inverse
     _inverse = not _inverse
     viz.set_inverse(_inverse)
-    viz.update(_builder)
+    viz.update()
 
 
 def _append_moves(moves):
     moves = moves.split(" ")
-    if _builder.alg.len() > 0:
-        if not _builder.append_moves(moves, _inverse):
-            print(f"{moves} not allowed after {_builder.previous.kind}{_builder.previous.variant}")
+    if _current().alg.len() > 0:
+        if not _current().append_moves(moves, _inverse):
+            print(
+                f"{moves} not allowed after {_current().previous.kind}{_current().previous.variant}")
     else:
-        if not _builder.append_moves(moves, _inverse):
-            assert _builder.previous is not None
-            if all(_builder.previous.allows_move(m) for m in moves):
-                alg = _builder.previous.alg
-                _builder.back()
-                _builder.append_moves(f"{alg}".split(" "), _inverse)
-                _builder.append_moves(moves, _inverse)
+        if not _current().append_moves(moves, _inverse):
+            assert _current().previous is not None
+            if all(_current().previous.allows_move(m) for m in moves):
+                alg = _current().previous.alg
+                _current().back()
+                _current().append_moves(alg.normal_moves(), False)
+                _current().append_moves(alg.inverse_moves(), True)
+                _current().append_moves(moves, _inverse)
             else:
-                print(f"{moves} not allowed after {_builder.previous.kind}{_builder.previous.variant}")
+                print(
+                    f"{moves} not allowed after {_current().previous.kind}{_current().previous.variant}")
 
 
+def _get_preferred_axis(kind, variant) -> Tuple[str, str]:
+    # top/bottom axis and front/back axis
+    axis = PREFERRED_AXIS.get(
+        (kind, variant),
+        PREFERRED_AXIS.get(("*", variant),
+                           PREFERRED_AXIS.get(("*", "*"))),
+    )
+    return axis
 
 
 def _set_orientation(x, y, z):
@@ -190,67 +228,52 @@ def _z():
 
 def eofb():
     """Look for EO on FB axis"""
-    _set_orientation(0, 0, 0)
     _set_mode("eo", "fb")
 
 
 def eorl():
-    _set_orientation(0, 0, -math.pi / 2)
     """Look for EO on RL axis"""
     _set_mode("eo", "rl")
 
 
 def eoud():
-    _set_orientation(math.pi / 2, 0, 0)
     """Look for EO on UD axis"""
     _set_mode("eo", "ud")
 
 
 def drud():
     """Look for DR on UD axis"""
-    if _set_mode("dr", "ud"):
-        if _builder.previous.variant == "fb":
-            _set_orientation(0, 0, 0)
-        else:
-            _set_orientation(0, -math.pi / 2, 0)
+    _set_mode("dr", "ud")
 
 
 def drrl():
     """Look for DR on RL axis"""
-    if _set_mode("dr", "rl"):
-        if _builder.previous.variant == "fb":
-            _set_orientation(0, -math.pi / 2, 0)
-        else:
-            _set_orientation(0, -math.pi / 2, math.pi / 2)
+    _set_mode("dr", "rl")
 
 
 def drfb():
     """Look for DR on FB axis"""
-    if _set_mode("dr", "fb"):
-        if _builder.previous.variant == "ud":
-            _set_orientation(math.pi / 2, 0, 0)
-        else:
-            _set_orientation(math.pi / 2, 0, math.pi / 2)
+    _set_mode("dr", "fb")
 
 
 def htr():
     """Look for HTR"""
-    _set_mode("htr", _builder.previous.variant)
+    _set_mode("htr", _current().previous.variant)
 
 
 def fr():
     """Look for FR"""
-    _set_mode("fr", _builder.previous.variant)
+    _set_mode("fr", _current().previous.variant)
 
 
 def _set_mode(kind, variant) -> bool:
     step_info = StepInfo(kind, variant)
     if step_info.is_eligible(viz.cube):
-        if (not _builder.alg.is_empty()) and not _builder.step_info.is_solved(viz.cube):
+        if (not _current().alg.is_empty()) and not _current().step_info.is_solved(viz.cube):
             reset()
-        _builder.advance_to(kind, variant)
-        while step_info.is_solved(viz.cube) and _builder.previous:
-            _builder.back()
+        _current().advance_to(kind, variant)
+        while step_info.is_solved(viz.cube) and _current().previous:
+            _current().back()
         return True
     else:
         print(f"Cube is not eligible for {kind}{variant}")
@@ -318,7 +341,7 @@ def read_commands(window):
             exec(cmd)
 
     def prompt():
-        s = f"{_builder.kind}{_builder.variant}> {cmd}"
+        s = f"{_current().kind}{_current().variant}> {cmd}"
         window.move(0, 0)
         window.clrtoeol()
         window.addstr(0, 0, s)
@@ -383,21 +406,27 @@ def read_commands(window):
 
 
 def _debug():
-    print(f"{_builder.full_alg()}")
+    print(f"{_current().full_alg()}")
 
 
-def update(builder):
-    global _builder
-    _builder = builder
-    viz.update(builder)
+def _update(old_builder, new_builder):
+    if (old_builder.kind, old_builder.variant) != (new_builder.kind, new_builder.variant):
+        old_top, old_front = _get_preferred_axis(old_builder.kind, old_builder.variant)
+        new_top, new_front = _get_preferred_axis(new_builder.kind, new_builder.variant)
+        if len(new_top) > 1:
+            new_top = [f for f in old_top if f in new_top]
+        if len(new_front) > 1:
+            new_front = [f for f in old_front if f in new_front]
+        _set_orientation(*AXIS_ORIENTATIONS[(new_top[0], new_front[0])])
+    viz.update()
 
 
 if __name__ == "__main__":
-    cubelib.solution_builder._listener = update
-    viz.update(_builder)
+    cubelib.solution_builder._listener = _update
+    viz.update()
     threading.Thread(target=lambda: curses.wrapper(read_commands)).start()
-    # scramble()
-    # eofb()
+    scramble()
+    eorl()
     # solve(max=4)
     # check(1)
     # drud()

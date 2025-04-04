@@ -26,7 +26,7 @@ class SolutionBuilder:
 
         for m in moves:
             self._add_move(m, inverse)
-        notify()
+        update(_current)
         return True
 
     def _add_move(self, move: str, inverse: bool):
@@ -49,11 +49,8 @@ class SolutionBuilder:
             return self.previous.substeps() + [self]
 
     def back(self):
-        global _builder
-
         if self.previous is None:
-            _builder = SolutionBuilder()
-            notify()
+            update(SolutionBuilder())
             return
 
         previous = self.previous.previous or SolutionBuilder()
@@ -63,9 +60,8 @@ class SolutionBuilder:
 
 
     def reset(self):
-        global _builder
-        _builder = SolutionBuilder(self.kind, self.variant, previous=self.previous, comment=self.comment)
-        notify()
+        new_current = SolutionBuilder(self.kind, self.variant, previous=self.previous, comment=self.comment)
+        update(new_current)
 
     def save(self) -> bool:
         existing = _steps[(self.kind, self.variant)]
@@ -95,11 +91,9 @@ class SolutionBuilder:
         return val
 
     def advance_to(self, kind: str, variant: str):
-        global _builder
         previous = self if not self.alg.is_empty() else self.previous
-        _builder = SolutionBuilder(kind, variant, previous=previous)
         self.is_checked = True
-        notify()
+        update(SolutionBuilder(kind, variant, previous=previous))
 
     def append_comment(self, str):
         self.comment = f"{self.comment}{' ' if self.comment else ''}{str}"
@@ -108,27 +102,25 @@ class SolutionBuilder:
         return _steps[(self.kind, self.variant)]
 
     def clear(self):
-        global _builder
         _steps.clear()
-        _builder = SolutionBuilder("", "", previous=None)
-        notify()
+        update(SolutionBuilder("", "", previous=None))
 
     def load(self, index: int):
-        global _builder
         l = _steps.get((self.kind, self.variant), list())
         if l and index <= len(l):
-            _builder = l[index]
-            notify()
+            update(l[index])
 
 
 
 # Nested dict of (kind,variant) => SolutionBuilder
 _steps: Dict[Tuple[str, str], List[SolutionBuilder]] = defaultdict(list)
 # The algorithm currently being built
-_builder: SolutionBuilder = SolutionBuilder("", "")
-
-_listener: Optional[Callable[[SolutionBuilder], None]] = None
-def notify():
+_current: SolutionBuilder = SolutionBuilder("", "")
+_listener: Optional[Callable[[SolutionBuilder, SolutionBuilder], None]] = None
+def update(new_current):
+    global _current
+    old_current = _current
+    _current = new_current
     if _listener is not None:
-        _listener(_builder)
+        _listener(old_current, new_current)
 

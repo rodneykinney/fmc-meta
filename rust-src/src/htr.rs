@@ -146,6 +146,7 @@ impl Solvable for HTRRL {
 mod tests {
     use super::*;
     use cubelib::algs::Algorithm as LibAlgorithm;
+    use cubelib::steps::htr::coords::HTRDRUDCoord;
 
     #[test]
     fn test_unique_htr() {
@@ -167,5 +168,17 @@ mod tests {
         cube.apply_alg(&LibAlgorithm::from_str(scramble).unwrap());
         let algs = HTRFB.solve(&cube, 100).unwrap();
         assert_ne!(algs.len(), 0);
+    }
+
+    #[test]
+    fn test_htr() {
+        let scramble = "R U2 F2 U2 R";
+        let mut cube = Cube333::default();
+        cube.apply_alg(&LibAlgorithm::from_str(scramble).unwrap());
+        let state = cube.get_cube_state();
+        let coord = HTRDRUDCoord::from(&cube).val();
+        let subset = cube.get_dr_subset().unwrap();
+        let case = HTRRL.case_name(&cube);
+        assert_eq!(HTRRL.is_solved(&cube), false);
     }
 }

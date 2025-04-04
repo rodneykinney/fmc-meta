@@ -28,7 +28,7 @@ impl Algorithm {
     #[new]
     fn new(s: &str) -> PyResult<Self> {
         let alg =
-            LibAlgorithm::from_str(s).map_err(|_| PyValueError::new_err("Invalid algorithm"))?;
+            LibAlgorithm::from_str(s).map_err(|_| PyValueError::new_err(format!("Invalid algorithm: {}", s)))?;
         Ok(Algorithm(alg))
     }
 
@@ -49,7 +49,7 @@ impl Algorithm {
     }
 
     fn append(&self, s: &str, inverse: bool) -> PyResult<Algorithm> {
-        let turn = Turn333::from_str(s).map_err(|_| PyValueError::new_err("Invalid move"))?;
+        let turn = Turn333::from_str(s).map_err(|_| PyValueError::new_err(format!("Invalid move: {}", s)))?;
         let alg = append_move(&self.0, turn, inverse);
         Ok(Algorithm(alg))
     }

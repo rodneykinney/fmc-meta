@@ -9,9 +9,13 @@ from OpenGL.GLU import *
 import math
 import numpy as np
 
+import  cubelib.solution_builder
 from cubelib.solution_builder import SolutionBuilder
 from py_cubelib import (Cube, StepInfo)
 import pyquaternion
+
+def _current() -> SolutionBuilder:
+    return cubelib.solution_builder._current
 
 # U + L + F + R + B + D
 facelet_x = \
@@ -156,7 +160,6 @@ class CubeViz():
 
         self.scramble = ""
         self.cube = Cube("")
-        self.builder = SolutionBuilder()
         self.inverse = False
 
     def set_scramble(self, scramble: str):
@@ -170,14 +173,14 @@ class CubeViz():
             return True
         if self.hide_edges:
             return False
-        return self.builder.step_info.should_draw_edge(self.cube, pos_id, face)
+        return _current().step_info.should_draw_edge(self.cube, pos_id, face)
 
     def should_draw_corner(self, pos_id, face):
         if self.show_all:
             return True
         if self.hide_corners:
             return False
-        return self.builder.step_info.should_draw_corner(self.cube, pos_id, face)
+        return _current().step_info.should_draw_corner(self.cube, pos_id, face)
 
     def refresh(self):
         self.colors = [(1, 1, 1, .2)] * 54
@@ -260,10 +263,9 @@ class CubeViz():
     def set_inverse(self, inverse: bool):
         self.inverse = inverse
 
-    def update(self, builder: SolutionBuilder):
-        self.builder = builder
+    def update(self):
         self.cube = Cube(self.scramble)
-        self.cube.apply(self.builder.full_alg())
+        self.cube.apply(_current().full_alg())
         if self.inverse:
             self.cube.invert()
         self.refresh()
@@ -335,15 +337,15 @@ class CubeViz():
 
         y = 10
         y += write(
-            f"{self.builder.step_info.kind}{self.builder.step_info.variant} - {self.builder.alg}{' (' if self.inverse else ''}",
+            f"{_current().step_info.kind}{_current().step_info.variant} - {_current().alg}{' (' if self.inverse else ''}",
             10, y)
-        b = self.builder.previous
+        b = _current().previous
         while b is not None:
             y += write(f"{b.alg} // {b.kind} ({b.full_alg().len()})",10, y)
             b = b.previous
 
         write(
-            self.builder.step_info.case_name(self.cube),
+            _current().step_info.case_name(self.cube),
             self.display_width - 10, 10, right_justify=True
         )
 
