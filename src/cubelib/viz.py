@@ -2,8 +2,6 @@ import sys
 import logging
 import os
 
-import pygame
-from pygame.locals import *
 from OpenGL.GL import *
 from OpenGL.GLU import *
 import math
@@ -133,17 +131,14 @@ class CubeViz():
         self.display_width = width
         self.display_height = height
         self.opacity = opacity
-        os.environ['SDL_VIDEO_WINDOW_POS'] = '0,0'
-        pygame.display.set_mode((self.display_width, self.display_height), DOUBLEBUF | OPENGL)
-        pygame.display.set_caption("")
-        pygame.font.init()
+        #os.environ['SDL_VIDEO_WINDOW_POS'] = '0,0'
 
         # Set up the perspective
-        glMatrixMode(GL_PROJECTION)
-        gluPerspective(45, (self.display_width / self.display_height), 0.1, 50.0)
-
-        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
-        glEnable(GL_BLEND)
+        # glMatrixMode(GL_PROJECTION)
+        # gluPerspective(45, (self.display_width / self.display_height), 0.1, 50.0)
+        #
+        # glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
+        # glEnable(GL_BLEND)
 
         # Initial camera position
         self.camera_x = 0.0
@@ -161,6 +156,28 @@ class CubeViz():
         self.scramble = ""
         self.cube = Cube("")
         self.inverse = False
+        self.colors = [(1, 1, 1, .2)] * 54
+
+    def initializeGL(self, width, height):
+        """Initialize OpenGL settings"""
+        glClearColor(BACKGROUND, BACKGROUND, BACKGROUND, 1)
+        glEnable(GL_DEPTH_TEST)
+
+        # Enable alpha blending
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
+        glEnable(GL_BLEND)
+
+        # Set up the perspective
+        self.resize(width, height)
+
+
+    def resize(self, width, height):
+        """Handle widget resize events"""
+        glViewport(0, 0, width, height)
+        glMatrixMode(GL_PROJECTION)
+        glLoadIdentity()
+        gluPerspective(25, (width / height), 0.1, 50.0)
+
 
     def set_scramble(self, scramble: str):
         logging.debug(f"Setting scramble to {scramble}")
@@ -318,82 +335,12 @@ class CubeViz():
 
         glPopMatrix()
 
-        # Draw text
-        font = pygame.font.SysFont('Arial', 22)
-
-        def write(text, x, y, top_justify=False, right_justify=False):
-            text_surface = font.render(text, True, (255, 255, 255))
-            glColor4f(0.3, 0.3, 0.3, 1.0)
-            glRectf(x, y, x + text_surface.get_width(), y + text_surface.get_height())
-            text_data = pygame.image.tostring(text_surface, 'RGBA', True)
-            glWindowPos2d(
-                x if not right_justify else x - text_surface.get_width(),
-                y if not top_justify else y - text_surface.get_height())
-            glDrawPixels(text_surface.get_width(), text_surface.get_height(), GL_RGBA,
-                         GL_UNSIGNED_BYTE, text_data)
-            return text_surface.get_height()
-
-        write(self.scramble, 10, self.display_height, top_justify=True)
-
-        y = 10
-        y += write(
-            f"{_current().step_info.kind}{_current().step_info.variant} - {_current().alg}{' (' if self.inverse else ''}",
-            10, y)
-        b = _current().previous
-        while b is not None:
-            y += write(f"{b.alg} // {b.kind} ({b.full_alg().len()})",10, y)
-            b = b.previous
-
-        write(
-            _current().step_info.case_name(self.cube),
-            self.display_width - 10, 10, right_justify=True
-        )
-
     def rotate(self, dx, dy=0):
         self.view_angle += dx * .005
 
-    def stop(self):
-        self.running = False
+    def set_orientation(self, x, y, z):
+        """Set the cube orientation angles"""
+        self.xq_angle = x
+        self.yq_angle = y
+        self.zq_angle = z
 
-    def run(self):
-        # Initialize pygame
-        pygame.init()
-
-        clock = pygame.time.Clock()
-        self.running = True
-        dragging = False
-        last_mouse_pos = None
-
-        while self.running:
-            for event in pygame.event.get():
-                if event.type == pygame.QUIT:
-                    running = False
-
-                if event.type == pygame.MOUSEBUTTONDOWN:
-                    if event.button == 1:  # Left mouse button
-                        dragging = True
-                        last_mouse_pos = pygame.mouse.get_pos()
-
-                if event.type == pygame.MOUSEBUTTONUP:
-                    if event.button == 1:  # Left mouse button
-                        dragging = False
-
-                if event.type == pygame.MOUSEMOTION:
-                    if dragging:
-                        current_mouse_pos = pygame.mouse.get_pos()
-                        dx = current_mouse_pos[0] - last_mouse_pos[0]
-                        dy = current_mouse_pos[1] - last_mouse_pos[1]
-                        self.rotate(dx, 0)
-                        last_mouse_pos = current_mouse_pos
-
-                clock.tick(30)
-
-            self.draw()
-            # Update the display
-            pygame.display.flip()
-        pygame.quit()
-
-
-if __name__ == "__main__":
-    viz = CubeViz()
-    viz.run()
