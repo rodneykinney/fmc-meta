@@ -71,7 +71,7 @@ class CubeGLWidget(QOpenGLWidget):
     def mouseMoveEvent(self, event):
         if self.dragging and self.last_mouse_pos:
             dx = event.x() - self.last_mouse_pos.x()
-            self.rotate(dx)
+            self.viz.rotate(dx)
             self.last_mouse_pos = event.pos()
             
     def keyPressEvent(self, event):
@@ -106,35 +106,43 @@ class CubeExplorer(QMainWindow):
         
         # Create central widget and main layout
         central_widget = QWidget()
-        main_layout = QHBoxLayout(central_widget)
+        main_layout = QVBoxLayout(central_widget)
         self.setCentralWidget(central_widget)
         
-        # Create a splitter to divide the window
-        splitter = QSplitter(Qt.Horizontal)
-        main_layout.addWidget(splitter)
+        # Top section: GL widget + scramble/step info
+        top_panel = QWidget()
+        top_layout = QHBoxLayout(top_panel)
+        main_layout.addWidget(top_panel)
         
-        # Left panel (controls)
-        left_panel = QWidget()
-        left_layout = QVBoxLayout(left_panel)
-        splitter.addWidget(left_panel)
+        # OpenGL widget (now on the left)
+        self.viz = CubeViz()
+        self.gl_widget = CubeGLWidget(self.viz)
+        top_layout.addWidget(self.gl_widget)
         
-        # Scramble controls
-        scramble_layout = QHBoxLayout()
-        scramble_label = QLabel("Scramble:")
-        self.scramble_input = QLineEdit()
-        generate_button = QPushButton("Generate")
-        generate_button.clicked.connect(self.generate_scramble)
-        apply_button = QPushButton("Apply")
-        apply_button.clicked.connect(lambda: self.set_scramble(self.scramble_input.text()))
+        # Scramble and step info panel (right of GL widget)
+        info_panel = QWidget()
+        info_layout = QVBoxLayout(info_panel)
+        top_layout.addWidget(info_panel)
         
-        scramble_layout.addWidget(scramble_label)
-        scramble_layout.addWidget(self.scramble_input)
-        scramble_layout.addWidget(generate_button)
-        scramble_layout.addWidget(apply_button)
-        left_layout.addLayout(scramble_layout)
+        current_container = QWidget()
+        current_layout = QVBoxLayout(current_container)
+        self.current_solution = QListWidget()
+        self.current_solution.setStyleSheet("font-size: 16px;")
+        current_layout.addWidget(self.current_solution)
+        info_layout.addWidget(current_container)
+
+        # Step info (from _current())
+        self.status_label = QLabel()
+        self.status_label.setStyleSheet("font-size: 16px;")
+        info_layout.addWidget(self.status_label)
         
-        # Command input
-        command_layout = QHBoxLayout()
+        # Case label
+        self.case_label = QLabel()
+        info_layout.addWidget(self.case_label)
+        
+        # Command input below the GL widget
+        command_container = QWidget()
+        command_layout = QHBoxLayout(command_container)
         command_label = QLabel("Command:")
         self.command_input = QLineEdit()
         self.command_input.returnPressed.connect(self.execute_command)
@@ -144,84 +152,21 @@ class CubeExplorer(QMainWindow):
         command_layout.addWidget(command_label)
         command_layout.addWidget(self.command_input)
         command_layout.addWidget(execute_button)
-        left_layout.addLayout(command_layout)
+        main_layout.addWidget(command_container)
         
-        # Step buttons
-        step_layout = QHBoxLayout()
-        eo_buttons = [QPushButton(f"EO{axis}") for axis in ["UD", "FB", "RL"]]
-        eo_buttons[0].clicked.connect(self.eoud)
-        eo_buttons[1].clicked.connect(self.eofb)
-        eo_buttons[2].clicked.connect(self.eorl)
-        
-        dr_buttons = [QPushButton(f"DR{axis}") for axis in ["UD", "FB", "RL"]]
-        dr_buttons[0].clicked.connect(self.drud)
-        dr_buttons[1].clicked.connect(self.drfb)
-        dr_buttons[2].clicked.connect(self.drrl)
-        
-        for button in eo_buttons + dr_buttons:
-            step_layout.addWidget(button)
-            
-        left_layout.addLayout(step_layout)
-        
-        advanced_layout = QHBoxLayout()
-        htr_button = QPushButton("HTR")
-        htr_button.clicked.connect(self.htr)
-        fr_button = QPushButton("FR")
-        fr_button.clicked.connect(self.fr)
-        solve_button = QPushButton("Solve")
-        solve_button.clicked.connect(self.solve)
-        niss_button = QPushButton("NISS")
-        niss_button.clicked.connect(self.niss)
-        
-        for button in [htr_button, fr_button, solve_button, niss_button]:
-            advanced_layout.addWidget(button)
-            
-        left_layout.addLayout(advanced_layout)
-        
-        # Solution actions
-        action_layout = QHBoxLayout()
-        save_button = QPushButton("Save")
-        save_button.clicked.connect(self.save)
-        reset_button = QPushButton("Reset")
-        reset_button.clicked.connect(self.reset)
-        back_button = QPushButton("Back")
-        back_button.clicked.connect(self.back)
-        list_button = QPushButton("List")
-        list_button.clicked.connect(self.list_solutions)
-        
-        for button in [save_button, reset_button, back_button, list_button]:
-            action_layout.addWidget(button)
-            
-        left_layout.addLayout(action_layout)
-        
-        # Solution list
+        # Solutions list at the bottom
+        solutions_container = QWidget()
+        solutions_layout = QVBoxLayout(solutions_container)
+        solutions_layout.addWidget(QLabel("Found Solutions (Double-click to check a solution):"))
         self.solution_list = QListWidget()
         self.solution_list.itemDoubleClicked.connect(self.check_solution)
-        left_layout.addWidget(self.solution_list)
-        left_layout.addWidget(QLabel("Double-click to check a solution"))
+        solutions_layout.addWidget(self.solution_list)
+        main_layout.addWidget(solutions_container)
         
         # Console output
         self.console_output = QTextEdit()
         self.console_output.setReadOnly(True)
-        left_layout.addWidget(self.console_output)
-        
-        # Right panel (cube display)
-        right_panel = QWidget()
-        right_layout = QVBoxLayout(right_panel)
-        splitter.addWidget(right_panel)
-        
-        # Status bar at top
-        self.status_label = QLabel()
-        right_layout.addWidget(self.status_label)
-        
-        # OpenGL widget
-        self.viz = CubeViz()
-        self.gl_widget = CubeGLWidget(self.viz)
-        right_layout.addWidget(self.gl_widget)
-        
-        # Case label at bottom
-        self.case_label = QLabel()
-        right_layout.addWidget(self.case_label)
+        main_layout.addWidget(self.console_output)
         
         # Set up stdout redirection
         self.stdout_buffer = io.StringIO()
@@ -244,12 +189,29 @@ class CubeExplorer(QMainWindow):
     def flush(self):
         """Handle stdout flush"""
         pass
-        
+
+    def refresh_current_solution(self):
+        curr = _current()
+        self.current_solution.clear()
+        self.current_solution.addItem("self.viz.scramble")
+        self.current_solution.addItem("")
+        for step in _current().substeps():
+            comment = ""
+            if step.step_info.is_solved(self.viz.cube):
+                comment = f"{step.kind} ({step.full_alg().len()}) {step.comment}"
+            else:
+                comment = f"{step.kind}-{step.step_info.case_name(self.viz.cube)} {step.comment}"
+            self.current_solution.addItem(f"{step.alg} // {comment}")
+
     def _update_step(self, old_builder, new_builder):
         """Handle step changes"""
         current = _current()
-        
+
+        # Update cube
+        self.gl_widget.update_cube()
+
         # Update status label
+        self.refresh_current_solution()
         step_type = f"{current.kind}{current.variant}"
         alg_text = f"{current.alg}"
         status = f"Step: {step_type} | Moves: {alg_text}"
@@ -259,12 +221,10 @@ class CubeExplorer(QMainWindow):
         case = current.step_info.case_name(self.viz.cube)
         self.case_label.setText(f"Case: {case}")
         
-        # Update cube
-        self.gl_widget.update_cube()
-    
+
     def set_scramble(self, scramble: str):
         """Set the cube to a specific scramble"""
-        self.scramble_input.setText(scramble)
+        self.refresh_current_solution()
         self.viz.set_scramble(scramble)
         _current().clear()
         self._update_step(None, _current())
@@ -291,7 +251,7 @@ class CubeExplorer(QMainWindow):
                 if cmd.find("(") < 0:
                     cmd = f"{cmd}()"
                 # Use locals and globals from this context
-                exec(cmd, globals(), {'self': self})
+                exec(f"self.{cmd}", globals(), {'self': self})
         except Exception as e:
             self.console_output.append(f"Error: {str(e)}")
             
