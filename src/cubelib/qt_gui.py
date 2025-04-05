@@ -10,7 +10,7 @@ from typing import Optional, List, Tuple
 from PyQt5.QtWidgets import (QApplication, QMainWindow, QVBoxLayout, QHBoxLayout, QWidget,
                              QLabel, QOpenGLWidget, QLineEdit, QPushButton, QTextEdit,
                              QListWidget, QSplitter, QMessageBox, QSizePolicy)
-from PyQt5.QtCore import Qt, QTimer, pyqtSignal, QObject
+from PyQt5.QtCore import Qt, QTimer, pyqtSignal, QObject, QEvent
 from PyQt5.QtGui import QSurfaceFormat
 
 import cubelib.attempt
@@ -293,54 +293,35 @@ class CubeExplorer(QMainWindow):
         solutions_layout = QVBoxLayout(solutions_container)
         solutions_layout.setContentsMargins(10, 0, 10, 0)  # Remove margins
         solutions_layout.setSpacing(0)  # Remove vertical spacing
+        
+        # Setup keyboard navigation for solution lists
+        self.active_list = None
 
         # Create a horizontal layout for the solution lists
         solution_lists_layout = QHBoxLayout()
         solution_lists_layout.setSpacing(10)  # Add some spacing between columns
 
-        # EO solutions list
-        eo_container = QWidget()
-        eo_layout = QVBoxLayout(eo_container)
-        eo_layout.addWidget(QLabel("EO:"))
-        self.eo_solution_list = QListWidget()
-        self.eo_solution_list.setMinimumHeight(150)  # Set minimum height
-        self.eo_solution_list.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-        self.eo_solution_list.itemDoubleClicked.connect(lambda i: self.check_item("eo", i))
-        eo_layout.addWidget(self.eo_solution_list)
-        solution_lists_layout.addWidget(eo_container)
+        def build_solution_widget(kind: str):
+            container = QWidget()
+            layout = QVBoxLayout(container)
+            layout.addWidget(QLabel(f"{kind.upper()}:"))
+            list = QListWidget()
+            list.setMinimumHeight(150)  # Set minimum height
+            list.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+            list.itemDoubleClicked.connect(lambda i: self.check_item(kind, i))
+            list.itemSelectionChanged.connect(lambda: self.solution_selected(kind))
+            list.setStyleSheet("QListWidget::item:selected { background-color: #3498db; }")
+            list.installEventFilter(self)  # Allow key handling
+            layout.addWidget(list)
+            solution_lists_layout.addWidget(container)
+            return list
 
-        # DR solutions list
-        dr_container = QWidget()
-        dr_layout = QVBoxLayout(dr_container)
-        dr_layout.addWidget(QLabel("DR:"))
-        self.dr_solution_list = QListWidget()
-        self.dr_solution_list.setMinimumHeight(150)  # Set minimum height
-        self.dr_solution_list.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-        self.dr_solution_list.itemDoubleClicked.connect(lambda i: self.check_item("dr", i))
-        dr_layout.addWidget(self.dr_solution_list)
-        solution_lists_layout.addWidget(dr_container)
 
-        # HTR solutions list
-        htr_container = QWidget()
-        htr_layout = QVBoxLayout(htr_container)
-        htr_layout.addWidget(QLabel("HTR:"))
-        self.htr_solution_list = QListWidget()
-        self.htr_solution_list.setMinimumHeight(150)  # Set minimum height
-        self.htr_solution_list.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-        self.htr_solution_list.itemDoubleClicked.connect(lambda i: self.check_item("htr", i))
-        htr_layout.addWidget(self.htr_solution_list)
-        solution_lists_layout.addWidget(htr_container)
-
-        # FR solutions list
-        fr_container = QWidget()
-        fr_layout = QVBoxLayout(fr_container)
-        fr_layout.addWidget(QLabel("FR:"))
-        self.fr_solution_list = QListWidget()
-        self.fr_solution_list.setMinimumHeight(150)  # Set minimum height
-        self.fr_solution_list.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-        self.fr_solution_list.itemDoubleClicked.connect(lambda i: self.check_item("fr", i))
-        fr_layout.addWidget(self.fr_solution_list)
-        solution_lists_layout.addWidget(fr_container)
+        # Solution List Widgets
+        self.eo_solution_list = build_solution_widget("eo")
+        self.dr_solution_list = build_solution_widget("dr")
+        self.htr_solution_list = build_solution_widget("htr")
+        self.fr_solution_list = build_solution_widget("fr")
 
         solutions_layout.addLayout(solution_lists_layout)
         main_layout.addWidget(solutions_container, 1)  # Add stretch factor of 1 to expand vertically
@@ -503,6 +484,122 @@ class CubeExplorer(QMainWindow):
         if next_steps:
             self.attempt.advance_to(*next_steps[0])
         self.command_input.setFocus()
+        
+    def solution_selected(self, kind):
+        """Handle selection changes in solution lists and highlight related steps"""
+        # Set the active list
+        self.active_list = kind
+        
+        # Define all lists
+        all_lists = {"eo": self.eo_solution_list, "dr": self.dr_solution_list, 
+                     "htr": self.htr_solution_list, "fr": self.fr_solution_list}
+        
+        # Get the current list widget and its selected item
+        current_list = all_lists[kind]
+        selected_items = current_list.selectedItems()
+        
+        if not selected_items:
+            # Clear all other list selections
+            for list_kind, list_widget in all_lists.items():
+                if list_kind != kind:
+                    list_widget.blockSignals(True)
+                    list_widget.clearSelection()
+                    list_widget.blockSignals(False)
+            return
+            
+        # Get the selected solution's index
+        selected_item = selected_items[0]
+        index = int(selected_item.text().split(".")[0].strip()) - 1
+        solutions_by_kind = self.attempt.solutions_by_kind()
+        
+        if kind not in solutions_by_kind or index >= len(solutions_by_kind[kind]):
+            return
+            
+        solution = solutions_by_kind[kind][index]
+        
+        # Keep track of selections we need to make to avoid duplicating them
+        selections_made = set([(kind, index)])
+        
+        # Recursively select all parents
+        def highlight_parent(solution, highlight_from_kind=None):
+            if not solution or not solution.previous or not solution.previous.kind:
+                return
+                
+            prev_kind = solution.previous.kind
+            
+            # Skip if the previous kind isn't one of our list kinds
+            if prev_kind not in all_lists:
+                return
+                
+            prev_list = all_lists[prev_kind]
+            
+            # Find the parent solution in the list
+            parent_index = -1
+            for i, parent_sol in enumerate(solutions_by_kind.get(prev_kind, [])):
+                if parent_sol == solution.previous:
+                    parent_index = i
+                    break
+                    
+            if parent_index == -1:
+                return
+                
+            # Check if we've already selected this parent
+            if (prev_kind, parent_index) in selections_made:
+                return
+                
+            # Add to our tracking set
+            selections_made.add((prev_kind, parent_index))
+            
+            # Select the parent item
+            prev_list.blockSignals(True)
+            prev_list.setCurrentRow(parent_index)
+            prev_list.blockSignals(False)
+            
+            # Continue recursively with the parent
+            highlight_parent(solution.previous)
+            
+        # Start the recursive highlighting
+        highlight_parent(solution)
+        
+    def eventFilter(self, obj, event):
+        """Handle keyboard events for navigating between solution lists"""
+        if event.type() == QEvent.KeyPress and obj in (self.eo_solution_list, self.dr_solution_list, 
+                                                      self.htr_solution_list, self.fr_solution_list):
+            # Define key mappings
+            key = event.key()
+            
+            # Enter key to check the currently selected solution
+            if key == Qt.Key_Return or key == Qt.Key_Enter:
+                if obj.currentItem():
+                    list_kind = {
+                        self.eo_solution_list: "eo",
+                        self.dr_solution_list: "dr",
+                        self.htr_solution_list: "htr",
+                        self.fr_solution_list: "fr"
+                    }[obj]
+                    self.check_item(list_kind, obj.currentItem())
+                    return True
+                    
+            # Handle Tab and Shift+Tab to move between solution lists
+            if key == Qt.Key_Tab and not event.modifiers() & Qt.ShiftModifier:
+                # Move to the next list
+                order = ["eo", "dr", "htr", "fr"]
+                current_idx = order.index(self.active_list) if self.active_list in order else -1
+                if current_idx < len(order) - 1:
+                    next_list = order[current_idx + 1]
+                    getattr(self, f"{next_list}_solution_list").setFocus()
+                    return True
+                    
+            elif key == Qt.Key_Tab and event.modifiers() & Qt.ShiftModifier:
+                # Move to the previous list
+                order = ["eo", "dr", "htr", "fr"]
+                current_idx = order.index(self.active_list) if self.active_list in order else -1
+                if current_idx > 0:
+                    prev_list = order[current_idx - 1]
+                    getattr(self, f"{prev_list}_solution_list").setFocus()
+                    return True
+                    
+        return super().eventFilter(obj, event)
 
     def show_help(self):
         """Show help popup with commands organized by section"""
@@ -511,7 +608,7 @@ class CubeExplorer(QMainWindow):
         
         # Generate help text by inspecting Commands methods
         cmd = self.commands
-        help_text = "<html><body style='font-family: monospace;'>"
+        help_text = "<html><body>"
         
         # Get all methods with their sections
         methods = []
@@ -650,6 +747,8 @@ class Commands:
             )
             if str(s) not in existing:
                 solutions.append(s)
+            if len(solutions) >= num_solutions:
+                break
         if solutions:
             self.app.set_status(f"Found {len(solutions)} solutions to {sol.kind}{sol.variant}")
             self.app.attempt.save_solutions(solutions)
