@@ -4,11 +4,11 @@ import threading
 import io
 import logging
 import traceback
-from typing import Optional, List
+from typing import Optional, List, Tuple
 
-from PyQt5.QtWidgets import (QApplication, QMainWindow, QVBoxLayout, QHBoxLayout, QWidget, 
-                           QLabel, QOpenGLWidget, QLineEdit, QPushButton, QTextEdit, 
-                           QListWidget, QSplitter, QMessageBox)
+from PyQt5.QtWidgets import (QApplication, QMainWindow, QVBoxLayout, QHBoxLayout, QWidget,
+                             QLabel, QOpenGLWidget, QLineEdit, QPushButton, QTextEdit,
+                             QListWidget, QSplitter, QMessageBox)
 from PyQt5.QtCore import Qt, QTimer, pyqtSignal, QObject
 from PyQt5.QtGui import QSurfaceFormat
 
@@ -39,33 +39,84 @@ NEXT_STEPS = {
     ("fr", "rl"): [("slice", "rl")],
 }
 
+PREFERRED_AXIS = {
+    ("eo", "ud"): (["fb", "rl"], ["ud"]),
+    ("eo", "rl"): (["ud", "fb"], ["rl"]),
+    ("eo", "fb"): (["ud", "rl"], ["fb"]),
+    ("*", "ud"): (["ud"], ["fb", "rl"]),
+    ("*", "fb"): (["fb"], ["ud", "rl"]),
+    ("*", "rl"): (["rl"], ["fb", "ud"]),
+    ("*", "*"): (["ud"], ["fb", "rl"]),
+}
+
+AXIS_ORIENTATIONS = {
+    ("ud", "fb"): (0, 0, 0),
+    ("ud", "rl"): (0, 0, -math.pi / 2),
+    ("fb", "ud"): (math.pi / 2, 0, 0),
+    ("fb", "rl"): (math.pi / 2, 0, -math.pi / 2),
+    ("rl", "fb"): (0, -math.pi / 2, 0),
+    ("rl", "ud"): (0, -math.pi / 2, math.pi / 2),
+}
 
 
 class CubeGLWidget(QOpenGLWidget):
     """OpenGL widget that uses the CubeViz drawing methods"""
-    
+
     def __init__(self, viz: CubeViz, parent=None):
         super(CubeGLWidget, self).__init__(parent)
         self.setMinimumSize(400, 400)
 
         self.viz = viz
-        self.viz.attempt.listen_to(self.update)
-        
+        self.viz.attempt.listen_to(self.refresh)
+        self.previous_solution = self.viz.attempt.solution
+
         # Set up a timer for animation/updates
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.update)
         self.timer.start(30)  # 30ms refresh rate (approx 33 fps)
-        
+
         # Mouse tracking
         self.setMouseTracking(True)
         self.last_mouse_pos = None
         self.dragging = False
 
-    def update_cube(self):
-        """Update the cube based on the current solution builder"""
-        self.viz.update()
-        self.update()  # Trigger a repaint
-        
+    def set_orientation(self):
+        old_sol = self.previous_solution
+        new_sol = self.viz.attempt.solution
+
+        def _get_preferred_axis(kind, variant) -> Tuple[List[str], List[str]]:
+            # Options for top/bottom axis and front/back axis
+            axis = PREFERRED_AXIS.get(
+                (kind, variant),
+                PREFERRED_AXIS.get(
+                    ("*", variant),
+                    PREFERRED_AXIS.get(("*", "*"))),
+            )
+            return axis
+
+        if (old_sol.kind, old_sol.variant) != (new_sol.kind, new_sol.variant):
+            old_top, old_front = _get_preferred_axis(old_sol.kind, old_sol.variant)
+            new_top, new_front = _get_preferred_axis(new_sol.kind, new_sol.variant)
+            if len(new_top) > 1:
+                new_top = [f for f in old_top if f in new_top]
+            if len(new_front) > 1:
+                new_front = [f for f in old_front if f in new_front]
+            self._set_orientation(*AXIS_ORIENTATIONS[(new_top[0], new_front[0])])
+
+    def _set_orientation(self, x, y, z):
+        self.viz.xq_angle = x
+        self.viz.yq_angle = y
+        self.viz.zq_angle = z
+
+
+    def refresh(self):
+        # Change orientation if necessary
+        self.set_orientation()
+        self.previous_solution = self.viz.attempt.solution
+
+        # Repaint
+        self.update()
+
     def initializeGL(self):
         """Initialize OpenGL settings"""
         self.viz.initializeGL(self.width(), self.height())
@@ -82,17 +133,17 @@ class CubeGLWidget(QOpenGLWidget):
         if event.button() == Qt.LeftButton:
             self.dragging = True
             self.last_mouse_pos = event.pos()
-    
+
     def mouseReleaseEvent(self, event):
         if event.button() == Qt.LeftButton:
             self.dragging = False
-    
+
     def mouseMoveEvent(self, event):
         if self.dragging and self.last_mouse_pos:
             dx = event.x() - self.last_mouse_pos.x()
             self.viz.rotate(dx)
             self.last_mouse_pos = event.pos()
-            
+
     def keyPressEvent(self, event):
         if event.key() == Qt.Key_X:
             self.viz.set_orientation(self.xq_angle - math.pi / 2, 0, 0)
@@ -106,6 +157,7 @@ class CubeGLWidget(QOpenGLWidget):
             self.rotate(25)
         else:
             super(CubeGLWidget, self).keyPressEvent(event)
+
 
 NEXT_STEPS = {
     ("eo", "ud"): [("dr", "fb"), ("dr", "rl")],
@@ -125,72 +177,76 @@ NEXT_STEPS = {
 
 class CubeExplorer(QMainWindow):
     """Main window for cube exploration with PyQt"""
-    
+
     def __init__(self):
         super(CubeExplorer, self).__init__()
-        
+
         self.setWindowTitle("Cube Explorer")
         self.resize(1200, 800)
-        
+
         self.attempt = Attempt()
         self.attempt.listen_to(self.refresh)
 
+        self.commands = Commands(self)
+
         self.history = []
-        
+
         # Set up the OpenGL format
         gl_format = QSurfaceFormat()
         gl_format.setVersion(2, 1)
         gl_format.setProfile(QSurfaceFormat.CompatibilityProfile)
         QSurfaceFormat.setDefaultFormat(gl_format)
-        
+
         # Create central widget and main layout
         central_widget = QWidget()
         main_layout = QVBoxLayout(central_widget)
         self.setCentralWidget(central_widget)
-        
+
         # Top section: GL widget + scramble/step info
         top_panel = QWidget()
         top_layout = QHBoxLayout(top_panel)
         main_layout.addWidget(top_panel)
-        
+
         # Create a vertical layout for the GL widget and status labels
         gl_container = QWidget()
         gl_layout = QVBoxLayout(gl_container)
         gl_layout.setContentsMargins(0, 0, 0, 0)
         gl_layout.setSpacing(0)
-        
+
         # OpenGL widget
         self.viz = CubeViz(self.attempt)
         self.gl_widget = CubeGLWidget(self.viz)
         gl_layout.addWidget(self.gl_widget)
-        
+
         # Status labels below GL widget
         status_container = QWidget()
         status_layout = QHBoxLayout(status_container)
         status_layout.setContentsMargins(0, 0, 0, 0)
         status_layout.setSpacing(0)
-        
+
         # Left label - Step kind and variant
         self.step_label = QLabel("Step")
-        self.step_label.setStyleSheet("background-color: #4d4d4d; color: white; font-weight: bold; font-size: 18px; padding: 5px;")
+        self.step_label.setStyleSheet(
+            "background-color: #4d4d4d; color: white; font-weight: bold; font-size: 18px; padding: 5px;")
         self.step_label.setMinimumHeight(40)
         status_layout.addWidget(self.step_label, 1)  # Give it a stretch factor of 1
-        
+
         # Right label - Case name
         self.case_label = QLabel("Case")
-        self.case_label.setStyleSheet("background-color: #4d4d4d; color: white; font-weight: bold; font-size: 18px; padding: 5px;")
+        self.case_label.setStyleSheet(
+            "background-color: #4d4d4d; color: white; font-weight: bold; font-size: 18px; padding: 5px;")
         self.case_label.setAlignment(Qt.AlignRight)
         self.case_label.setMinimumHeight(40)
         status_layout.addWidget(self.case_label, 1)  # Give it a stretch factor of 1
-        
+
         gl_layout.addWidget(status_container)
         top_layout.addWidget(gl_container)
-        
+
         # Scramble and step info panel (right of GL widget)
         info_panel = QWidget()
         info_layout = QVBoxLayout(info_panel)
         top_layout.addWidget(info_panel)
-        
+
         current_container = QWidget()
         current_layout = QVBoxLayout(current_container)
         self.current_solution = QListWidget()
@@ -206,7 +262,7 @@ class CubeExplorer(QMainWindow):
         self.command_input.returnPressed.connect(self.execute_command)
         execute_button = QPushButton("Execute")
         execute_button.clicked.connect(lambda: self.execute_command())
-        
+
         command_layout.addWidget(command_label)
         command_layout.addWidget(self.command_input)
         command_layout.addWidget(execute_button)
@@ -217,14 +273,14 @@ class CubeExplorer(QMainWindow):
         self.status_label = QLabel()
         status_layout.addWidget(self.status_label)
         main_layout.addWidget(status_container)
-        
+
         # Solutions lists at the bottom
         solutions_container = QWidget()
         solutions_layout = QVBoxLayout(solutions_container)
 
         # Create a horizontal layout for the solution lists
         solution_lists_layout = QHBoxLayout()
-        
+
         # EO solutions list
         eo_container = QWidget()
         eo_layout = QVBoxLayout(eo_container)
@@ -233,7 +289,7 @@ class CubeExplorer(QMainWindow):
         self.eo_solution_list.itemDoubleClicked.connect(self.check_solution)
         eo_layout.addWidget(self.eo_solution_list)
         solution_lists_layout.addWidget(eo_container)
-        
+
         # DR solutions list
         dr_container = QWidget()
         dr_layout = QVBoxLayout(dr_container)
@@ -242,7 +298,7 @@ class CubeExplorer(QMainWindow):
         self.dr_solution_list.itemDoubleClicked.connect(self.check_solution)
         dr_layout.addWidget(self.dr_solution_list)
         solution_lists_layout.addWidget(dr_container)
-        
+
         # HTR solutions list
         htr_container = QWidget()
         htr_layout = QVBoxLayout(htr_container)
@@ -251,7 +307,7 @@ class CubeExplorer(QMainWindow):
         self.htr_solution_list.itemDoubleClicked.connect(self.check_solution)
         htr_layout.addWidget(self.htr_solution_list)
         solution_lists_layout.addWidget(htr_container)
-        
+
         # FR solutions list
         fr_container = QWidget()
         fr_layout = QVBoxLayout(fr_container)
@@ -260,16 +316,16 @@ class CubeExplorer(QMainWindow):
         self.fr_solution_list.itemDoubleClicked.connect(self.check_solution)
         fr_layout.addWidget(self.fr_solution_list)
         solution_lists_layout.addWidget(fr_container)
-        
+
         solutions_layout.addLayout(solution_lists_layout)
         main_layout.addWidget(solutions_container)
-        
+
         # Set initial scramble
         self.generate_scramble()
-        
+
         # Set focus to command input
         self.command_input.setFocus()
-        
+
     def refresh_current_solution(self):
         self.current_solution.clear()
         self.current_solution.addItem(self.attempt.scramble)
@@ -295,14 +351,12 @@ class CubeExplorer(QMainWindow):
         else:
             self.case_label.setText("")
 
-
-
     def refresh_saved_solutions(self):
         solutions = self.attempt.saved_solutions()
         # EO solutions
         self.eo_solution_list.clear()
         for sol in solutions.get("eo", []):
-                self.eo_solution_list.addItem(str(sol))
+            self.eo_solution_list.addItem(str(sol))
 
         # DR solutions
         self.dr_solution_list.clear()
@@ -319,18 +373,13 @@ class CubeExplorer(QMainWindow):
         for sol in solutions.get("fr", []):
             self.fr_solution_list.addItem(str(sol))
 
-
     def refresh(self):
-        """Handle step changes"""
-        # Update cube
-        self.gl_widget.update_cube()
-        
         # Update current solution
         self.refresh_current_solution()
 
         # Update solution lists
         self.refresh_saved_solutions()
-        
+
 
     def set_scramble(self, scramble: str):
         """Set the cube to a specific scramble"""
@@ -340,15 +389,19 @@ class CubeExplorer(QMainWindow):
         """Generate a random scramble"""
         scramble = gen_scramble()
         self.set_scramble(scramble)
-        
+
+    def set_status(self, status: str):
+        self.status_label.setText(status)
+
     def execute_command(self):
         """Execute a command from the command input"""
         raw_command = self.command_input.text().strip()
         cmd = raw_command
         if not cmd:
             return
-            
+
         try:
+            self.set_status("")
             # Check if it's a sequence of cube moves
             if all(m in MOVES for m in cmd.upper().split()):
                 self._append_moves(cmd.upper())
@@ -357,27 +410,27 @@ class CubeExplorer(QMainWindow):
                 if cmd.find("(") < 0:
                     cmd = f"{cmd}()"
                 # Use locals and globals from this context
-                exec(f"self.{cmd}", globals(), {'self': self})
+                exec(f"self.commands.{cmd}", globals(), {'self': self})
             self.history.append(raw_command)
-        except NameError as e:
-            self.status_label.setText(f"No such command: {raw_command}")
+        except AttributeError as e:
+            self.set_status(f"No such command: {raw_command}")
         except Exception as e:
             logging.error(traceback.format_exc())
             logging.error(sys.exc_info())
-            self.status_label.setText(f"Error: {str(e)}")
-            
+            self.set_status(f"Error: {str(e)}")
+
         self.command_input.clear()
-    
+
     def _append_moves(self, moves):
         """Append moves to the current solution"""
         moves = moves.split(" ")
         inverse = self.attempt.inverse
 
         sol = self.attempt.solution
-        
+
         if sol.alg.len() > 0:
             if not self.attempt.append_moves(moves, inverse):
-                self.status_label.setText(
+                self.set_status(
                     f"{moves} not allowed after {sol.previous.kind}{sol.previous.variant}")
         else:
             if not self.attempt.append_moves(moves, inverse):
@@ -389,132 +442,24 @@ class CubeExplorer(QMainWindow):
                     self.attempt.append_moves(alg.inverse_moves(), True)
                     self.attempt.append_moves(moves, inverse)
                 else:
-                    self.status_label.setText(
+                    self.set_status(
                         f"{moves} not allowed after {sol.previous.kind}{sol.previous.variant}")
-        
-    def eoud(self):
-        """Look for EO on UD axis"""
-        self._set_mode("eo", "ud")
-        
-    def eofb(self):
-        """Look for EO on FB axis"""
-        self._set_mode("eo", "fb")
-        
-    def eorl(self):
-        """Look for EO on RL axis"""
-        self._set_mode("eo", "rl")
-        
-    def drud(self):
-        """Look for DR on UD axis"""
-        self._set_mode("dr", "ud")
-        
-    def drfb(self):
-        """Look for DR on FB axis"""
-        self._set_mode("dr", "fb")
-        
-    def drrl(self):
-        """Look for DR on RL axis"""
-        self._set_mode("dr", "rl")
-        
-    def htr(self):
-        """Look for HTR"""
-        sol = self.attempt.solution
-        self._set_mode("htr", sol.previous.variant if sol.previous else "ud")
-        
-    def fr(self):
-        """Look for FR"""
-        sol = self.attempt.solution
-        self._set_mode("fr", sol.previous.variant if sol.previous else "ud")
-        
-    def niss(self):
-        """Switch between normal and inverse scramble"""
-        self.attempt.set_inverse(not self.attempt.inverse)
 
-    def _set_mode(self, kind, variant) -> bool:
+    def set_step(self, kind, variant) -> bool:
         """Change to a specific solving step"""
         step_info = StepInfo(kind, variant)
         sol = self.attempt.solution
         if step_info.is_eligible(self.attempt.cube):
             if (not sol.alg.is_empty()) and not sol.step_info.is_solved(self.attempt.cube):
-                self.reset()
+                self.attempt.reset()
             self.attempt.advance_to(kind, variant)
             while step_info.is_solved(self.attempt.cube) and sol.previous:
                 self.attempt.back()
             return True
         else:
-            self.status_label.setText(f"Cube is not eligible for {kind}{variant}")
+            self.set_status(f"Cube is not eligible for {kind}{variant}")
             return False
-    
-    def solve(self):
-        """Find and save solutions for the current step"""
-        sol = self.attempt.solution
-        on_inverse = self.attempt.inverse
-        if on_inverse:
-            self.niss()
-        n_existing = len(self.attempt.saved_solutions(sol.kind, sol.variant))
-        if sol.alg.len() == 0:
-            # Multiple solutions of the full step, auto-save
-            self.status_label.setText(f"Finding solutions for {sol.kind}{sol.variant}...")
-            algs = sol.step_info.solve(self.attempt.cube, n_existing + 10)
-            self.status_label.setText(f"Found {len(algs)} solutions. Saving")
-            count = 0
-            for alg in algs:
-                sol = PartialSolution(
-                    kind=self.attempt.solution.kind,
-                    variant=self.attempt.solution.variant,
-                    alg=alg
-                )
-                count += 1 if self.attempt.save_solution(sol) else 0
-                if count >= 10:
-                    break
-            self.list_solutions()
-        else:
-            algs = sol.step_info.solve(self.attempt.cube, n_existing + 1)
-            if algs:
-                existing = {f"{a}" for a in sol.saved_solutions_of_same_step()}
-                for a in algs:
-                    if f"{a}" not in existing:
-                        sol.alg = sol.alg.merge(a)
-                        self.attempt.set_solution(sol)
-                        break
-            else:
-                self.status_label.setText("No solution found!")
-        if on_inverse:
-            self.niss()
-    
-    def save(self):
-        """Save this algorithm and start a new one"""
-        sol = self.attempt.solution
-        if not sol.step_info.is_solved(self.attempt.cube):
-            if sol.kind == "" or sol.previous is None:
-                self.status_label.setText("Complete at least one step before saving")
-                return
-            partial = PartialSolution(
-                kind=sol.previous.kind,
-                variant=sol.previous.variant,
-                previous=sol.previous.previous,
-                alg=sol.previous.alg.merge(sol.alg),
-            )
-            options = NEXT_STEPS.get((partial.kind, partial.variant), [])
-            case = sol.step_info.case_name(self.attempt.cube)
-            partial.comment = f"{sol.kind}{sol.variant}-{case}" if len(options) > 1 else case
-            self.attempt.save_solution(partial)
-            return
-        self.attempt.save()
-        next_steps = NEXT_STEPS.get((sol.kind, sol.variant))
-        if next_steps is not None and len(next_steps) == 1:
-            self.attempt.advance_to(*next_steps[0])
-        else:
-            self.reset()
-    
-    def reset(self):
-        """Reset the cube to the beginning of the current step"""
-        self.attempt.reset()
-    
-    def back(self):
-        """Go back to the previous step"""
-        self.attempt.back()
-    
+
     def check_solution(self, item):
         """Load a selected solution"""
         self.attempt.load(item.text())
@@ -531,14 +476,128 @@ def main():
         level=logging.DEBUG,
         format='%(levelname)s - %(message)s'
     )
-    
+
     # Create the Qt Application
     app = QApplication(sys.argv)
     window = CubeExplorer()
     window.show()
-    
+
     # Start the application
     sys.exit(app.exec_())
+
+
+class Commands:
+    def __init__(self, app: CubeExplorer):
+        self.app = app
+
+    def eoud(self):
+        """Look for EO on UD axis"""
+        self.app.set_step("eo", "ud")
+
+    def eofb(self):
+        """Look for EO on FB axis"""
+        self.app.set_step("eo", "fb")
+
+    def eorl(self):
+        """Look for EO on RL axis"""
+        self.app.set_step("eo", "rl")
+
+    def drud(self):
+        """Look for DR on UD axis"""
+        self.app.set_step("dr", "ud")
+
+    def drfb(self):
+        """Look for DR on FB axis"""
+        self.app.set_step("dr", "fb")
+
+    def drrl(self):
+        """Look for DR on RL axis"""
+        self.app.set_step("dr", "rl")
+
+    def htr(self):
+        """Look for HTR"""
+        sol = self.app.attempt.solution
+        self.app.set_step("htr", sol.previous.variant if sol.previous else "ud")
+
+    def fr(self):
+        """Look for FR"""
+        sol = self.app.attempt.solution
+        self.app.set_step("fr", sol.previous.variant if sol.previous else "ud")
+
+    def niss(self):
+        """Switch between normal and inverse scramble"""
+        self.app.attempt.set_inverse(not self.app.attempt.inverse)
+
+    def solve(self, num_solutions: int = 1):
+        """Find and save solutions for the current step"""
+        sol = self.app.attempt.solution
+        on_inverse = self.app.attempt.inverse
+        if on_inverse:
+            self.niss()
+        n_existing = sum(1 for s in self.app.attempt.saved_solutions().get(sol.kind, []) if
+                         s.variant == sol.variant)
+        if sol.alg.len() == 0:
+            # Multiple solutions of the full step, auto-save
+            self.app.set_status(f"Finding solutions for {sol.kind}{sol.variant}...")
+            algs = sol.step_info.solve(self.app.attempt.cube, n_existing + num_solutions)
+            self.app.set_status(f"Found {len(algs)} solutions. Saving")
+            count = 0
+            for alg in algs:
+                sol = PartialSolution(
+                    kind=self.app.attempt.solution.kind,
+                    variant=self.app.attempt.solution.variant,
+                    alg=alg
+                )
+                count += 1 if self.app.attempt.save_solution(sol) else 0
+                if count >= 10:
+                    break
+        else:
+            algs = sol.step_info.solve(self.app.attempt.cube, n_existing + num_solutions)
+            if algs:
+                existing = {f"{a}" for a in sol.saved_solutions_of_same_step()}
+                for a in algs:
+                    if f"{a}" not in existing:
+                        sol.alg = sol.alg.merge(a)
+                        self.app.attempt.set_solution(sol)
+                        break
+            else:
+                self.app.set_status("No solution found!")
+        if on_inverse:
+            self.app.niss()
+
+    def save(self):
+        """Save this algorithm and start a new one"""
+        sol = self.app.attempt.solution
+        if not sol.step_info.is_solved(self.app.attempt.cube):
+            if sol.kind == "" or sol.previous is None:
+                self.app.set_status("Complete at least one step before saving")
+                return
+            partial = PartialSolution(
+                kind=sol.previous.kind,
+                variant=sol.previous.variant,
+                previous=sol.previous.previous,
+                alg=sol.previous.alg.merge(sol.alg),
+            )
+            options = NEXT_STEPS.get((partial.kind, partial.variant), [])
+            case = sol.step_info.case_name(self.app.attempt.cube)
+            partial.comment = f"{sol.kind}{sol.variant}-{case}" if len(options) > 1 else case
+            self.app.attempt.save_solution(partial)
+            return
+        self.app.attempt.save()
+        next_steps = NEXT_STEPS.get((sol.kind, sol.variant))
+        if next_steps is not None and len(next_steps) == 1:
+            self.app.attempt.advance_to(*next_steps[0])
+        else:
+            self.reset()
+
+    def reset(self):
+        """Reset the cube to the beginning of the current step"""
+        self.app.attempt.reset()
+
+    def back(self):
+        """Go back to the previous step"""
+        self.app.attempt.back()
+
 
 if __name__ == "__main__":
     main()

@@ -96,8 +96,8 @@ class Attempt:
         self.solution.is_checked = True
         self.set_solution(PartialSolution(kind, variant, previous=previous))
 
-    def saved_solutions(self) -> Dict[str, List["PartialSolution"]]:
-        dict: Dict[str, List["PartialSolution"]] = defaultdict(list)
+    def saved_solutions(self) -> Dict[str, List[PartialSolution]]:
+        dict: Dict[str, List[PartialSolution]] = defaultdict(list)
         for sol in self._saved.values():
             dict[sol.kind].append(sol)
         for sols in dict.values():
