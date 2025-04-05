@@ -22,8 +22,22 @@ impl Solvable for SliceUD {
         FRUD.is_solved(cube)
     }
 
-    fn case_name(&self, _cube: &Cube333) -> String {
-        "".to_string()
+    fn case_name(&self, cube: &Cube333) -> String {
+        let mut bad_edge_count = 0;
+        let mut bad_corner_count = 0;
+        let edges = cube.edges.get_edges();
+        let corners = cube.corners.get_corners();
+        for i in 0..12 {
+            if edges[i].id as usize != i{
+                bad_edge_count += 1;
+            }
+        }
+        for i in 0..8 {
+            if corners[i].id as usize != i {
+                bad_corner_count += 1;
+            }
+        }
+        format!("{}c{}e", bad_corner_count, bad_edge_count).to_string()
     }
 
     fn should_draw_edge(&self, _cube: &Cube333, _pos: usize, _facelet: u8) -> bool {
@@ -57,8 +71,10 @@ impl Solvable for SliceFB {
         FRFB.is_solved(cube)
     }
 
-    fn case_name(&self, _cube: &Cube333) -> String {
-        "".to_string()
+    fn case_name(&self, cube: &Cube333) -> String {
+        let mut cube = cube.clone();
+        cube.transform(Transformation333::X);
+        SliceUD.case_name(&cube)
     }
 
     fn should_draw_edge(&self, _cube: &Cube333, _pos: usize, _facelet: u8) -> bool {
@@ -93,8 +109,10 @@ impl Solvable for SliceRL {
         FRRL.is_solved(cube)
     }
 
-    fn case_name(&self, _cube: &Cube333) -> String {
-        "".to_string()
+    fn case_name(&self, cube: &Cube333) -> String {
+        let mut cube = cube.clone();
+        cube.transform(Transformation333::Z);
+        SliceUD.case_name(&cube)
     }
 
     fn should_draw_edge(&self, _cube: &Cube333, _pos: usize, _facelet: u8) -> bool {
@@ -112,4 +130,3 @@ impl Solvable for SliceRL {
         solve_step(cube, step_config(StepKind::FINLS, ""), count, false)
     }
 }
-

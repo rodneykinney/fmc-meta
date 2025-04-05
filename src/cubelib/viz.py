@@ -125,7 +125,7 @@ class CubeViz():
         self.opacity = opacity
 
         self.attempt = attempt
-        self.attempt.listen_to(self.refresh)
+        self.attempt.add_cube_listener(self.refresh)
 
         # Initial camera position
         self.camera_x = 0.0
