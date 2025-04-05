@@ -7,13 +7,9 @@ from OpenGL.GLU import *
 import math
 import numpy as np
 
-import  cubelib.solution_builder
-from cubelib.solution_builder import SolutionBuilder
+from cubelib.attempt import PartialSolution, Attempt
 from py_cubelib import (Cube, StepInfo)
 import pyquaternion
-
-def _current() -> SolutionBuilder:
-    return cubelib.solution_builder._current
 
 # U + L + F + R + B + D
 facelet_x = \
@@ -122,23 +118,14 @@ class CubeViz():
 
     def __init__(
             self,
-            scramble="",
-            width=800,
-            height=600,
+            attempt: Attempt,
             opacity=.8,  # Set the opacity for the colors
     ):
         # Set up the display
-        self.display_width = width
-        self.display_height = height
         self.opacity = opacity
-        #os.environ['SDL_VIDEO_WINDOW_POS'] = '0,0'
 
-        # Set up the perspective
-        # glMatrixMode(GL_PROJECTION)
-        # gluPerspective(45, (self.display_width / self.display_height), 0.1, 50.0)
-        #
-        # glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
-        # glEnable(GL_BLEND)
+        self.attempt = attempt
+        self.attempt.listen_to(self.refresh)
 
         # Initial camera position
         self.camera_x = 0.0
@@ -153,9 +140,6 @@ class CubeViz():
         self.hide_edges = False
         self.show_all = False
 
-        self.scramble = ""
-        self.cube = Cube("")
-        self.inverse = False
         self.colors = [(1, 1, 1, .2)] * 54
 
     def initializeGL(self, width, height):
@@ -179,25 +163,19 @@ class CubeViz():
         gluPerspective(25, (width / height), 0.1, 50.0)
 
 
-    def set_scramble(self, scramble: str):
-        logging.debug(f"Setting scramble to {scramble}")
-        self.scramble = scramble
-        self.cube = Cube(self.scramble)
-        self.refresh()
-
     def should_draw_edge(self, pos_id, face):
         if self.show_all:
             return True
         if self.hide_edges:
             return False
-        return _current().step_info.should_draw_edge(self.cube, pos_id, face)
+        return self.attempt.solution.step_info.should_draw_edge(self.attempt.cube, pos_id, face)
 
     def should_draw_corner(self, pos_id, face):
         if self.show_all:
             return True
         if self.hide_corners:
             return False
-        return _current().step_info.should_draw_corner(self.cube, pos_id, face)
+        return self.attempt.solution.step_info.should_draw_corner(self.attempt.cube, pos_id, face)
 
     def refresh(self):
         self.colors = [(1, 1, 1, .2)] * 54
@@ -207,7 +185,7 @@ class CubeViz():
         self.colors[31] = RED + (self.opacity,)
         self.colors[40] = BLUE + (self.opacity,)
         self.colors[49] = YELLOW + (self.opacity,)
-        corners = self.cube.corners()
+        corners = self.attempt.cube.corners()
         for i in range(0, 8):
             piece_id, orientation = corners[i]
             for side in range(0, 3):
@@ -217,7 +195,7 @@ class CubeViz():
                 self.colors[corner_position_facelets[i][side]] = (
                         corner_piece_colors[piece_id][face] +
                         (self.opacity,))
-        edges = self.cube.edges()
+        edges = self.attempt.cube.edges()
         for i in range(0, 12):
             piece_id, piece_orientation = edges[i]
             orientation = default_orientation[home_slice[piece_id] ^ home_slice[i]]
@@ -281,10 +259,6 @@ class CubeViz():
         self.inverse = inverse
 
     def update(self):
-        self.cube = Cube(self.scramble)
-        self.cube.apply(_current().full_alg())
-        if self.inverse:
-            self.cube.invert()
         self.refresh()
 
     def draw(self):
