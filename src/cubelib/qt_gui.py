@@ -539,6 +539,41 @@ class AppWindow(QMainWindow):
         for _,w in self.solution_widgets.items():
             w.scrollToItem(w.currentItem())
 
+    def solve(self, num_solutions: int):
+        """Find and save solutions for the current step"""
+        if num_solutions > 50:
+            self.set_status("Maximum of 50 solutions per solve")
+            return
+        sol = self.attempt.solution
+        on_inverse = self.attempt.inverse
+        if on_inverse:
+            self.niss()
+        existing = set(str(s) for s in self.attempt.solutions_for_step(sol.kind, sol.variant))
+        self.set_status(f"Finding solutions for {sol.kind}{sol.variant}...")
+        algs = sol.step_info.solve(self.attempt.cube, len(existing) + num_solutions)
+        solutions = []
+        for alg in algs:
+            base_alg = Algorithm(str(sol.alg))
+            base_alg.merge(alg)
+            s = PartialSolution(
+                kind=sol.kind,
+                variant=sol.variant,
+                previous=sol.previous,
+                alg=sol.alg.merge(alg)
+            )
+            if str(s) not in existing:
+                solutions.append(s)
+            if len(solutions) >= num_solutions:
+                break
+        if solutions:
+            self.set_status(f"Found {len(solutions)} solutions to {sol.kind}{sol.variant}")
+            self.attempt.save_solutions(solutions)
+            self.check_solution(solutions[-1])
+        else:
+            self.set_status(f"No solutions found for {sol.kind}{sol.variant}")
+        if on_inverse:
+            self.niss()
+
     def eventFilter(self, obj, event):
         """Handle keyboard events for navigating between solution lists"""
         # Check if this is a key event for one of our solution lists
@@ -714,38 +749,7 @@ class Commands:
     @vfmc_command("solve")
     def solve(self, num_solutions: int = 1):
         """Find and save solutions for the current step"""
-        if num_solutions > 50:
-            self.app.set_status("Maximum of 50 solutions per solve")
-            return
-        sol = self.app.attempt.solution
-        on_inverse = self.app.attempt.inverse
-        if on_inverse:
-            self.niss()
-        existing = set(str(s) for s in self.app.attempt.solutions_for_step(sol.kind, sol.variant))
-        self.app.set_status(f"Finding solutions for {sol.kind}{sol.variant}...")
-        algs = sol.step_info.solve(self.app.attempt.cube, len(existing) + num_solutions)
-        solutions = []
-        for alg in algs:
-            base_alg = Algorithm(str(sol.alg))
-            base_alg.merge(alg)
-            s = PartialSolution(
-                kind=sol.kind,
-                variant=sol.variant,
-                previous=sol.previous,
-                alg=sol.alg.merge(alg)
-            )
-            if str(s) not in existing:
-                solutions.append(s)
-            if len(solutions) >= num_solutions:
-                break
-        if solutions:
-            self.app.set_status(f"Found {len(solutions)} solutions to {sol.kind}{sol.variant}")
-            self.app.attempt.save_solutions(solutions)
-            self.app.check_solution(solutions[-1])
-        else:
-            self.app.set_status(f"No solutions found for {sol.kind}{sol.variant}")
-        if on_inverse:
-            self.app.niss()
+        self.app.solve(num_solutions)
 
     @vfmc_command("nav")
     def save(self):

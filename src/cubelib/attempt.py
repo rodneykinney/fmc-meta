@@ -1,4 +1,4 @@
-from typing import Optional, Dict, List, Tuple, Callable
+from typing import Optional, Dict, List, Callable
 from collections import defaultdict
 
 from py_cubelib import Algorithm, StepInfo, debug, Cube
@@ -101,10 +101,17 @@ class Attempt:
         return [s for s in self._saved_by_kind.get(kind, []) if s.variant == s.variant]
 
     def reset(self):
+        alg = self.solution.alg
+        # Clear only the moves for the current side
+        if self.inverse:
+            alg = Algorithm(" ".join(alg.normal_moves()))
+        else:
+            alg = Algorithm(f"({' '.join(alg.inverse_moves())})")
         new_solution = PartialSolution(
             self.solution.kind,
             self.solution.variant,
             previous=self.solution.previous,
+            alg = alg,
             comment=self.solution.comment
         )
         self.set_solution(new_solution)
