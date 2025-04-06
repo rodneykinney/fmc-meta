@@ -10,8 +10,8 @@ from typing import Optional, List, Tuple
 from PyQt5.QtWidgets import (QApplication, QMainWindow, QVBoxLayout, QHBoxLayout, QWidget,
                              QLabel, QOpenGLWidget, QLineEdit, QPushButton,
                              QListWidget, QSplitter, QMessageBox, QSizePolicy, QStyledItemDelegate)
-from PyQt5.QtCore import Qt, QTimer
-from PyQt5.QtGui import QSurfaceFormat
+from PyQt5.QtCore import Qt, QTimer, QEvent
+from PyQt5.QtGui import QSurfaceFormat, QColor
 
 import cubelib.attempt
 from cubelib.attempt import PartialSolution, Attempt
@@ -177,11 +177,11 @@ NEXT_STEPS = {
 }
 
 
-class CubeExplorer(QMainWindow):
+class AppWindow(QMainWindow):
     """Main window for cube exploration with PyQt"""
 
     def __init__(self):
-        super(CubeExplorer, self).__init__()
+        super(AppWindow, self).__init__()
 
         self.setWindowTitle("VFMC")
         self.resize(1200, 800)
@@ -271,7 +271,7 @@ class CubeExplorer(QMainWindow):
 
         command_label = QLabel("Command:")
         self.command_input = QLineEdit()
-        self.command_input.returnPressed.connect(self.execute_command)
+        self.command_input.returnPressed.connect(lambda: self.execute_command(self.command_input.text().strip()))
         help_button = QPushButton("Help")
         help_button.clicked.connect(self.show_help)
 
@@ -306,7 +306,7 @@ class CubeExplorer(QMainWindow):
         self.solution_widgets = {}
 
         # Define colors for different states
-        selection_color = "#aaaaff"
+        selection_color = "#33ff9e" # "#aaaaff"
 
         # Create a common stylesheet for all list widgets with focus-independent styling
         list_style = f"""
@@ -319,13 +319,13 @@ class CubeExplorer(QMainWindow):
             /* Basic selection style (blue) */
             QListWidget::item:selected {{ 
                 background-color: {selection_color}; 
-                color: white;
+                color: black;
             }}
             
             /* Keep selection color even when widget loses focus */
             QListWidget::item:selected:!active {{ 
                 background-color: {selection_color}; 
-                color: white;
+                color: black;
             }}
         """
 
@@ -339,11 +339,12 @@ class CubeExplorer(QMainWindow):
             list.itemDoubleClicked.connect(lambda item: self.activate_item(kind, item, list))
             list.itemSelectionChanged.connect(lambda: self.item_selected(kind, list))
             list.setStyleSheet(list_style)
-            # list.installEventFilter(self)  # Allow key handling
+            list.installEventFilter(self)  # Allow key handling
             layout.addWidget(list)
             solution_lists_layout.addWidget(container)
             self.solution_widgets[kind] = list
             list.setItemDelegate(CustomDelegate())
+            list.setProperty("kind", kind)
             return list
 
         # Solution List Widgets
@@ -357,7 +358,7 @@ class CubeExplorer(QMainWindow):
                               1)  # Add stretch factor of 1 to expand vertically
 
         # Set initial scramble
-        self.generate_scramble()
+        self.set_scramble(gen_scramble())
 
         # Set focus to command input
         self.command_input.setFocus()
@@ -372,7 +373,7 @@ class CubeExplorer(QMainWindow):
                 if step.step_info.is_solved(self.attempt.cube):
                     item = f"{step}"
                 else:
-                    item = f"{item}{' ( )' if self.attempt.inverse else ''} // {step.kind}{step.variant}-{step.step_info.case_name(self.attempt.cube)} {step.comment}"
+                    item = f"{item}{' ( )' if self.attempt.inverse else ''} // {step.kind}{step.variant}-{step.step_info.case_name(self.attempt.cube)} ({step.full_alg().len()})"
             self.current_solution.addItem(item)
 
         # Update step name
@@ -431,17 +432,11 @@ class CubeExplorer(QMainWindow):
         """Set the cube to a specific scramble"""
         self.attempt.set_scramble(scramble)
 
-    def generate_scramble(self):
-        """Generate a random scramble"""
-        scramble = gen_scramble()
-        self.set_scramble(scramble)
-
     def set_status(self, status: str):
         self.status_label.setText(status)
 
-    def execute_command(self):
+    def execute_command(self, raw_command):
         """Execute a command from the command input"""
-        raw_command = self.command_input.text().strip()
         cmd = raw_command
         if not cmd:
             return
@@ -457,7 +452,10 @@ class CubeExplorer(QMainWindow):
                     cmd = f"{cmd}()"
                 # Use locals and globals from this context
                 exec(f"self.commands.{cmd}", globals(), {'self': self})
-            self.history.append(raw_command)
+            command_to_save = raw_command
+            if command_to_save == "scramble":
+                command_to_save = f"""scramble("{self.attempt.scramble}")"""
+            self.history.append(command_to_save)
         except AttributeError as e:
             logging.error(traceback.format_exc())
             logging.error(sys.exc_info())
@@ -527,15 +525,50 @@ class CubeExplorer(QMainWindow):
         for k, w in self.solution_widgets.items():
             w.blockSignals(True)
             w.clearSelection()
-            w.setSelectionMode(QListWidget.ExtendedSelection)
+            w.setSelectionMode(QListWidget.ContiguousSelection)
             saved_solutions = self.attempt.solutions_by_kind()[k]
             for i in range(w.count()):
                 item = w.item(i)
                 sol = saved_solutions[i]
                 highlight = sol in selected_step.substeps() or selected_step in sol.substeps()
                 item.setSelected(highlight)
+                if highlight:
+                    w.setCurrentItem(item)
             w.setSelectionMode(QListWidget.SingleSelection)
             w.blockSignals(False)
+        for _,w in self.solution_widgets.items():
+            w.scrollToItem(w.currentItem())
+
+    def eventFilter(self, obj, event):
+        """Handle keyboard events for navigating between solution lists"""
+        # Check if this is a key event for one of our solution lists
+        solution_list_objects = list(self.solution_widgets.values())
+        if event.type() == QEvent.KeyPress and obj in solution_list_objects:
+            # Define key mappings
+            key = event.key()
+
+            kind = obj.property("kind")
+            if not kind:
+                return False
+
+            # Enter key to check the currently selected solution
+            if key == Qt.Key_Return or key == Qt.Key_Enter:
+                if obj.currentItem():
+                    self.activate_item(kind, obj.currentItem(), obj)
+                    return True
+
+            # Handle Tab and Shift+Tab to move between solution lists
+            order = ["eo", "dr", "htr", "fr"]
+            if (key == Qt.Key_Tab):
+                index = order.index(obj.property("kind"))
+                next_index = index
+                if event.modifiers() & Qt.ShiftModifier:
+                    next_index = (index - 1) % len(order)
+                else:
+                    next_index = (index + 1) % len(order)
+                self.solution_widgets[order[next_index]].setFocus()
+        return super().eventFilter(obj, event)
+
 
     def check_solution(self, solution):
         """Load a selected solution"""
@@ -552,36 +585,44 @@ class CubeExplorer(QMainWindow):
         help_dialog.setWindowTitle("VFMC Help")
 
         # Generate help text by inspecting Commands methods
-        cmd = self.commands
-        help_text = "<html><body>"
-
-        # Get all methods with their sections
-        methods = []
-        for name in dir(cmd):
+        commands = []
+        for name in dir(self.commands):
             if name.startswith('_'):
                 continue
-            attr = getattr(cmd, name)
-            if callable(attr) and hasattr(attr, 'section'):
-                methods.append((name, attr.__doc__ or "", attr.section))
+            attr = getattr(self.commands, name)
+            if callable(attr):
+                commands.append((name, attr))
 
-        # Group by section
-        sections = {}
-        for name, doc, section in methods:
-            if section not in sections:
-                sections[section] = []
-            sections[section].append((name, doc))
+        help_text = "<html><body>"
 
-        # Build formatted help text
-        for section, commands in sorted(sections.items()):
-            help_text += f"<h3>{section}</h3><ul>"
-            for name, doc in sorted(commands):
-                doc = doc.strip()
-                help_text += f"<li><b>{name}</b>: {doc}</li>"
-            help_text += "</ul>"
+        help_text += "<p>Use it to refine your FMC strategy and practice case recognition</p>"
+
+        help_text += "<p>Start with <b>scramble(\"...\")</b> to load a scramble or just <b>scramble</b> to generate a new scramble</p>"
+
+        help_text += "<h3>Solving Individual Steps</h3>"
+        help_text += "<p>Move from step to step by typing the name of the step you want to work on. "
+        help_text += "The display will show the bad corners/edges for the cube in its current state. "
+        step_commands = ["eofb", "eorl", "eoud", "drud", "drrl", "drfb", "htr", "fb"]
+        help_text += f"Available steps are: <b>{"</b>,<b>".join(step_commands)}</b></p>"
+
+        help_text += "<p>Enter moves (R, F', U2, etc.) to apply those moves to the cube. Enter <b>niss</b> to switch between normal and inverse scrambles. "
+        help_text += "Enter <b>reset</b> to return to the beginning of the current step.</p>"
+
+        help_text += "<p>You can enter <b>solve</b> at any point to find the shortest unknown solution to the current step. Enter <b>solve(n)</b> to find the next <b>n</b> solutions (up to 50 at at time)</p>"
+
+        help_text += "<h3>Building a Full Solution</h3>"
+        help_text += "<p>When the step is solved, enter <b>save</b> to save to the list of solutions at the bottom. "
+        help_text += "If the step is not solved, you can still save it.  Enter <b>back</b> to return to the previous step.</p>"
+
+        help_text += "<p>Click on any step at the bottom to see the steps and precede or follow it. Double click to load a step and start working on it. The steps that are active in the display are drawn in bold</p>"
+
+        help_text += "<h3>Saving/Loading Your Session</h3>"
+        help_text += "<p>Enter <b>save_session(\"...\")</b> to save all of your activity so far to a log file. You can load a logfile by entering <b>load_session(\"...\")</b></p>"
+
 
         help_text += "</body></html>"
 
-        help_dialog.setText("Available Commands:")
+        help_dialog.setText("Welcome to VFMC")
         help_dialog.setInformativeText(help_text)
         help_dialog.setStandardButtons(QMessageBox.Ok)
         help_dialog.exec_()
@@ -598,17 +639,14 @@ def main():
 
     # Create the Qt Application
     app = QApplication(sys.argv)
-    window = CubeExplorer()
+    window = AppWindow()
     window.show()
-
-    window.commands.eofb()
-    window.commands.solve(10)
 
     # Start the application
     sys.exit(app.exec_())
 
 
-def command_section(section):
+def vfmc_command(tag):
     """Decorator to categorize commands into sections for help text"""
 
     def decorator(func):
@@ -616,64 +654,64 @@ def command_section(section):
         def wrapper(*args, **kwargs):
             return func(*args, **kwargs)
 
-        wrapper.section = section
+        wrapper.tag = tag
         return wrapper
 
     return decorator
 
 
 class Commands:
-    def __init__(self, app: CubeExplorer):
+    def __init__(self, app: AppWindow):
         self.app = app
 
-    @command_section("Step Selection")
+    @vfmc_command("step")
     def eoud(self):
         """Look for EO on UD axis"""
         self.app.set_step("eo", "ud")
 
-    @command_section("Step Selection")
+    @vfmc_command("step")
     def eofb(self):
         """Look for EO on FB axis"""
         self.app.set_step("eo", "fb")
 
-    @command_section("Step Selection")
+    @vfmc_command("step")
     def eorl(self):
         """Look for EO on RL axis"""
         self.app.set_step("eo", "rl")
 
-    @command_section("Step Selection")
+    @vfmc_command("step")
     def drud(self):
         """Look for DR on UD axis"""
         self.app.set_step("dr", "ud")
 
-    @command_section("Step Selection")
+    @vfmc_command("step")
     def drfb(self):
         """Look for DR on FB axis"""
         self.app.set_step("dr", "fb")
 
-    @command_section("Step Selection")
+    @vfmc_command("step")
     def drrl(self):
         """Look for DR on RL axis"""
         self.app.set_step("dr", "rl")
 
-    @command_section("Step Selection")
+    @vfmc_command("step")
     def htr(self):
         """Look for HTR"""
         sol = self.app.attempt.solution
         self.app.set_step("htr", sol.previous.variant if sol.previous else "ud")
 
-    @command_section("Step Selection")
+    @vfmc_command("step")
     def fr(self):
         """Look for FR"""
         sol = self.app.attempt.solution
         self.app.set_step("fr", sol.previous.variant if sol.previous else "ud")
 
-    @command_section("Solution Management")
+    @vfmc_command("niss")
     def niss(self):
         """Switch between normal and inverse scramble"""
         self.app.attempt.set_inverse(not self.app.attempt.inverse)
 
-    @command_section("Solution Management")
+    @vfmc_command("solve")
     def solve(self, num_solutions: int = 1):
         """Find and save solutions for the current step"""
         if num_solutions > 50:
@@ -709,7 +747,7 @@ class Commands:
         if on_inverse:
             self.app.niss()
 
-    @command_section("Solution Management")
+    @vfmc_command("nav")
     def save(self):
         """Save this algorithm and start a new one"""
         sol = self.app.attempt.solution
@@ -736,33 +774,62 @@ class Commands:
         else:
             self.reset()
 
-    @command_section("Navigation")
+    @vfmc_command("nav")
     def reset(self):
         """Reset the cube to the beginning of the current step"""
         self.app.attempt.reset()
 
-    @command_section("Navigation")
+    @vfmc_command("nav")
     def back(self):
         """Go back to the previous step"""
         self.app.attempt.back()
 
-    @command_section("Scramble")
-    def scramble(self):
+    @vfmc_command("scramble")
+    def scramble(self, scramble: str = None):
         """
         <br>Use scramble(\"...\") to initialize with the specified scramble
         <br>or omit the parentheses to generate a new random scramble
         """
-        self.app.generate_scramble()
+        if scramble is None:
+            scramble = gen_scramble()
+        self.app.set_scramble(scramble)
+
+    @vfmc_command("session")
+    def save_session(self, filename):
+        try:
+            with open(filename,"w") as f:
+                f.writelines("\n".join(self.app.history))
+            self.app.set_status(f"Saved session to {filename}")
+        except Exception as e:
+            self.app.set_status(f"Unable to save to {filename}: {e}")
+
+    @vfmc_command("session")
+    def load_session(self, filename):
+        try:
+            with open(filename, "r") as f:
+                for cmd in f.readlines():
+                    self.app.execute_command(cmd.strip())
+            self.app.set_status(f"Loaded session from {filename}")
+        except Exception as e:
+            self.app.set_status(f"Unable to load session from {filename}: {e}")
+
+
 
 
 class CustomDelegate(QStyledItemDelegate):
     def initStyleOption(self, option, index):
+        # Override style for the active solution
         super().initStyleOption(option, index)
 
-        # Override style for the active solution
         active = index.data(IS_ACTIVE_MARKER)
         if active:
             option.font.setBold(True)
+
+class EventFilter():
+    def __init__(self, app: AppWindow):
+        self.app = app
+
+
 
 
 if __name__ == "__main__":
