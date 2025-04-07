@@ -18,7 +18,6 @@ class PartialSolution:
         self.step_info = StepInfo(kind, variant)
         self.previous = previous
         self.alg = alg
-        self.is_checked = False
         self.comment = comment or self.kind
 
     def _add_move(self, move: str, inverse: bool):
@@ -91,7 +90,6 @@ class Attempt:
 
     def advance_to(self, kind: str, variant: str):
         previous = self.solution if not self.solution.alg.is_empty() else self.solution.previous
-        self.solution.is_checked = True
         self.set_solution(PartialSolution(kind, variant, previous=previous))
 
     def solutions_by_kind(self) -> Dict[str, List[PartialSolution]]:

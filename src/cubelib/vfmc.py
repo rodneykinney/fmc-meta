@@ -271,7 +271,8 @@ class AppWindow(QMainWindow):
 
         command_label = QLabel("Command:")
         self.command_input = QLineEdit()
-        self.command_input.returnPressed.connect(lambda: self.execute_command(self.command_input.text().strip()))
+        self.command_input.returnPressed.connect(
+            lambda: self.execute_command(self.command_input.text().strip()))
         help_button = QPushButton("Help")
         help_button.clicked.connect(self.show_help)
 
@@ -306,7 +307,7 @@ class AppWindow(QMainWindow):
         self.solution_widgets = {}
 
         # Define colors for different states
-        selection_color = "#33ff9e" # "#aaaaff"
+        selection_color = "#33ff9e"  # "#aaaaff"
 
         # Create a common stylesheet for all list widgets with focus-independent styling
         list_style = f"""
@@ -495,7 +496,7 @@ class AppWindow(QMainWindow):
         """Change to a specific solving step"""
         step_info = StepInfo(kind, variant)
         sol = self.attempt.solution
-        past_step_kinds = {s.kind for s in sol.substeps()}
+        past_step_kinds = {s.kind for s in sol.substeps()[:-1]}
         if kind in past_step_kinds:
             # Moving backward
             while sol.kind != kind:
@@ -503,10 +504,12 @@ class AppWindow(QMainWindow):
             self.attempt.set_solution(sol)
             self.attempt.advance_to(kind, variant)
             return True
+        elif kind == sol.kind:
+            self.attempt.back()
+            self.attempt.advance_to(kind, variant)
+            return True
         else:
             if step_info.is_eligible(self.attempt.cube):
-                if (not sol.alg.is_empty()) and not sol.step_info.is_solved(self.attempt.cube):
-                    self.attempt.reset()
                 self.attempt.advance_to(kind, variant)
                 return True
             else:
@@ -536,7 +539,7 @@ class AppWindow(QMainWindow):
                     w.setCurrentItem(item)
             w.setSelectionMode(QListWidget.SingleSelection)
             w.blockSignals(False)
-        for _,w in self.solution_widgets.items():
+        for _, w in self.solution_widgets.items():
             w.scrollToItem(w.currentItem())
 
     def solve(self, num_solutions: int):
@@ -604,7 +607,6 @@ class AppWindow(QMainWindow):
                 self.solution_widgets[order[next_index]].setFocus()
         return super().eventFilter(obj, event)
 
-
     def check_solution(self, solution):
         """Load a selected solution"""
         self.attempt.set_solution(solution)
@@ -653,7 +655,6 @@ class AppWindow(QMainWindow):
 
         help_text += "<h3>Saving/Loading Your Session</h3>"
         help_text += "<p>Enter <b>save_session(\"...\")</b> to save all of your activity so far to a log file. You can load a logfile by entering <b>load_session(\"...\")</b></p>"
-
 
         help_text += "</body></html>"
 
@@ -733,13 +734,24 @@ class Commands:
     def htr(self):
         """Look for HTR"""
         sol = self.app.attempt.solution
-        self.app.set_step("htr", sol.previous.variant if sol.previous else "ud")
+        variant = ""
+        for v in ["ud", "fb", "rl"]:
+            if StepInfo("dr", v).is_solved(self.app.cube):
+                variant = v
+                break
+        if variant:
+            self.app.set_step("htr", variant)
+        else:
+            self.app.set_status("Cube is not eligible for HTR")
 
     @vfmc_command("step")
-    def fr(self):
+    def fr(self, axis=None):
         """Look for FR"""
-        sol = self.app.attempt.solution
-        self.app.set_step("fr", sol.previous.variant if sol.previous else "ud")
+        variant = next(s.variant for s in self.app.attempt.solution.substeps() if s.kind == "dr")
+        if variant is not None:
+            self.app.set_step("fr", variant)
+        else:
+            self.app.set_status("""No DR step found. Specify axis="..." to set the FR axis""")
 
     @vfmc_command("niss")
     def niss(self):
@@ -801,7 +813,7 @@ class Commands:
     @vfmc_command("session")
     def save_session(self, filename):
         try:
-            with open(filename,"w") as f:
+            with open(filename, "w") as f:
                 f.writelines("\n".join(self.app.history))
             self.app.set_status(f"Saved session to {filename}")
         except Exception as e:
@@ -818,8 +830,6 @@ class Commands:
             self.app.set_status(f"Unable to load session from {filename}: {e}")
 
 
-
-
 class CustomDelegate(QStyledItemDelegate):
     def initStyleOption(self, option, index):
         # Override style for the active solution
@@ -829,11 +839,10 @@ class CustomDelegate(QStyledItemDelegate):
         if active:
             option.font.setBold(True)
 
+
 class EventFilter():
     def __init__(self, app: AppWindow):
         self.app = app
-
-
 
 
 if __name__ == "__main__":
