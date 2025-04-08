@@ -1,3 +1,4 @@
+import os
 import sys
 import math
 import threading
@@ -60,6 +61,7 @@ AXIS_ORIENTATIONS = {
 }
 
 IS_ACTIVE_MARKER = Qt.UserRole
+IS_CROSSED_OUT_MARKER = Qt.UserRole + 1
 
 
 class CubeGLWidget(QOpenGLWidget):
@@ -83,39 +85,7 @@ class CubeGLWidget(QOpenGLWidget):
         self.last_mouse_pos = None
         self.dragging = False
 
-    def set_orientation(self):
-        old_sol = self.previous_solution
-        new_sol = self.viz.attempt.solution
-
-        def _get_preferred_axis(kind, variant) -> Tuple[List[str], List[str]]:
-            # Options for top/bottom axis and front/back axis
-            axis = PREFERRED_AXIS.get(
-                (kind, variant),
-                PREFERRED_AXIS.get(
-                    ("*", variant),
-                    PREFERRED_AXIS.get(("*", "*"))),
-            )
-            return axis
-
-        if (old_sol.kind, old_sol.variant) != (new_sol.kind, new_sol.variant):
-            old_top, old_front = _get_preferred_axis(old_sol.kind, old_sol.variant)
-            new_top, new_front = _get_preferred_axis(new_sol.kind, new_sol.variant)
-            if len(new_top) > 1:
-                new_top = [f for f in old_top if f in new_top]
-            if len(new_front) > 1:
-                new_front = [f for f in old_front if f in new_front]
-            self._set_orientation(*AXIS_ORIENTATIONS[(new_top[0], new_front[0])])
-
-    def _set_orientation(self, x, y, z):
-        self.viz.xq_angle = x
-        self.viz.yq_angle = y
-        self.viz.zq_angle = z
-
     def refresh(self):
-        # Change orientation if necessary
-        self.set_orientation()
-        self.previous_solution = self.viz.attempt.solution
-
         # Repaint
         self.update()
 
@@ -146,37 +116,6 @@ class CubeGLWidget(QOpenGLWidget):
             self.viz.rotate(dx)
             self.last_mouse_pos = event.pos()
 
-    def keyPressEvent(self, event):
-        if event.key() == Qt.Key_X:
-            self.viz.set_orientation(self.xq_angle - math.pi / 2, 0, 0)
-        elif event.key() == Qt.Key_Y:
-            self.viz.set_orientation(0, 0, self.zq_angle - math.pi / 2)
-        elif event.key() == Qt.Key_Z:
-            self.viz.set_orientation(0, self.yq_angle + math.pi / 2, 0)
-        elif event.key() == Qt.Key_Left:
-            self.rotate(-25)
-        elif event.key() == Qt.Key_Right:
-            self.rotate(25)
-        else:
-            super(CubeGLWidget, self).keyPressEvent(event)
-
-
-NEXT_STEPS = {
-    ("eo", "ud"): [("dr", "fb"), ("dr", "rl")],
-    ("eo", "rl"): [("dr", "ud"), ("dr", "fb")],
-    ("eo", "fb"): [("dr", "ud"), ("dr", "rl")],
-    ("dr", "ud"): [("htr", "ud")],
-    ("dr", "rl"): [("htr", "rl")],
-    ("dr", "fb"): [("htr", "fb")],
-    ("htr", "ud"): [("fr", "ud")],
-    ("htr", "rl"): [("fr", "rl")],
-    ("htr", "fb"): [("fr", "fb")],
-    ("fr", "ud"): [("slice", "ud")],
-    ("fr", "fb"): [("slice", "fb")],
-    ("fr", "rl"): [("slice", "rl")],
-}
-
-
 class AppWindow(QMainWindow):
     """Main window for cube exploration with PyQt"""
 
@@ -192,8 +131,6 @@ class AppWindow(QMainWindow):
         self.previous_solution = self.attempt.solution
 
         self.commands = Commands(self)
-
-        self.history = []
 
         # Set up the OpenGL format
         gl_format = QSurfaceFormat()
@@ -272,7 +209,7 @@ class AppWindow(QMainWindow):
         command_label = QLabel("Command:")
         self.command_input = QLineEdit()
         self.command_input.returnPressed.connect(
-            lambda: self.execute_command(self.command_input.text().strip()))
+            lambda: self.commands.execute(self.command_input.text().strip()))
         help_button = QPushButton("Help")
         help_button.clicked.connect(self.show_help)
 
@@ -400,6 +337,7 @@ class AppWindow(QMainWindow):
                 item = w.item(i)
                 sol = saved_solutions[i]
                 item.setData(IS_ACTIVE_MARKER, sol in self.attempt.solution.substeps())
+                item.setData(IS_CROSSED_OUT_MARKER, sol.is_crossed_out)
 
     def refresh_saved_solutions(self):
         solutions = self.attempt.solutions_by_kind()
@@ -431,42 +369,12 @@ class AppWindow(QMainWindow):
 
     def set_scramble(self, scramble: str):
         """Set the cube to a specific scramble"""
+        for w in self.solution_widgets.values():
+            w.clear()
         self.attempt.set_scramble(scramble)
 
     def set_status(self, status: str):
         self.status_label.setText(status)
-
-    def execute_command(self, raw_command):
-        """Execute a command from the command input"""
-        cmd = raw_command
-        if not cmd:
-            return
-
-        try:
-            self.set_status("")
-            # Check if it's a sequence of cube moves
-            if all(m in MOVES for m in cmd.upper().split()):
-                self._append_moves(cmd.upper())
-            else:
-                # Assume it's a Python command
-                if cmd.find("(") < 0:
-                    cmd = f"{cmd}()"
-                # Use locals and globals from this context
-                exec(f"self.commands.{cmd}", globals(), {'self': self})
-            command_to_save = raw_command
-            if command_to_save == "scramble":
-                command_to_save = f"""scramble("{self.attempt.scramble}")"""
-            self.history.append(command_to_save)
-        except AttributeError as e:
-            logging.error(traceback.format_exc())
-            logging.error(sys.exc_info())
-            self.set_status(f"No such command: {raw_command}")
-        except Exception as e:
-            logging.error(traceback.format_exc())
-            logging.error(sys.exc_info())
-            self.set_status(f"Error: {str(e)}")
-
-        self.command_input.clear()
 
     def _append_moves(self, moves):
         """Append moves to the current solution"""
@@ -496,12 +404,18 @@ class AppWindow(QMainWindow):
         """Change to a specific solving step"""
         step_info = StepInfo(kind, variant)
         sol = self.attempt.solution
+        while sol.alg.len() == 0 and sol.previous:
+            sol = sol.previous
         past_step_kinds = {s.kind for s in sol.substeps()[:-1]}
         if kind in past_step_kinds:
             # Moving backward
             while sol.kind != kind:
                 sol = sol.previous
-            self.attempt.set_solution(sol)
+            if sol.previous:
+                sol = sol.previous
+            else:
+                sol = PartialSolution()
+            self.attempt.solution = sol
             self.attempt.advance_to(kind, variant)
             return True
         elif kind == sol.kind:
@@ -517,8 +431,9 @@ class AppWindow(QMainWindow):
                 return False
 
     def activate_item(self, kind, item, list_widget):
-        solution = self.attempt.solutions_by_kind()[kind][list_widget.row(item)]
-        self.check_solution(solution)
+        index = list_widget.row(item)+1
+        # Execute via self.commands to get this into the history
+        self.commands.execute(f'check("{kind}",{index})')
 
     def item_selected(self, kind, list_widget):
         selected_item = list_widget.currentItem()
@@ -550,7 +465,7 @@ class AppWindow(QMainWindow):
         sol = self.attempt.solution
         on_inverse = self.attempt.inverse
         if on_inverse:
-            self.niss()
+            self.attempt.niss()
         existing = set(str(s) for s in self.attempt.solutions_for_step(sol.kind, sol.variant))
         self.set_status(f"Finding solutions for {sol.kind}{sol.variant}...")
         algs = sol.step_info.solve(self.attempt.cube, len(existing) + num_solutions)
@@ -575,7 +490,7 @@ class AppWindow(QMainWindow):
         else:
             self.set_status(f"No solutions found for {sol.kind}{sol.variant}")
         if on_inverse:
-            self.niss()
+            self.attempt.niss()
 
     def eventFilter(self, obj, event):
         """Handle keyboard events for navigating between solution lists"""
@@ -630,36 +545,10 @@ class AppWindow(QMainWindow):
             if callable(attr):
                 commands.append((name, attr))
 
-        help_text = "<html><body>"
-
-        help_text += "<p>Use it to refine your FMC strategy and practice case recognition</p>"
-
-        help_text += "<p>Start with <b>scramble(\"...\")</b> to load a scramble or just <b>scramble</b> to generate a new scramble</p>"
-
-        help_text += "<h3>Solving Individual Steps</h3>"
-        help_text += "<p>Move from step to step by typing the name of the step you want to work on. "
-        help_text += "The display will show the bad corners/edges for the cube in its current state. "
-        step_commands = ["eofb", "eorl", "eoud", "drud", "drrl", "drfb", "htr", "fb"]
-        help_text += f"Available steps are: <b>{"</b>,<b>".join(step_commands)}</b></p>"
-
-        help_text += "<p>Enter moves (R, F', U2, etc.) to apply those moves to the cube. Enter <b>niss</b> to switch between normal and inverse scrambles. "
-        help_text += "Enter <b>reset</b> to return to the beginning of the current step.</p>"
-
-        help_text += "<p>You can enter <b>solve</b> at any point to find the shortest unknown solution to the current step. Enter <b>solve(n)</b> to find the next <b>n</b> solutions (up to 50 at at time)</p>"
-
-        help_text += "<h3>Building a Full Solution</h3>"
-        help_text += "<p>When the step is solved, enter <b>save</b> to save to the list of solutions at the bottom. "
-        help_text += "If the step is not solved, you can still save it.  Enter <b>back</b> to return to the previous step.</p>"
-
-        help_text += "<p>Click on any step at the bottom to see the steps and precede or follow it. Double click to load a step and start working on it. The steps that are active in the display are drawn in bold</p>"
-
-        help_text += "<h3>Saving/Loading Your Session</h3>"
-        help_text += "<p>Enter <b>save_session(\"...\")</b> to save all of your activity so far to a log file. You can load a logfile by entering <b>load_session(\"...\")</b></p>"
-
-        help_text += "</body></html>"
+        with open(os.path.join(os.path.dirname(__file__), "help.html"), "r") as f:
+            help_dialog.setInformativeText(f.read())
 
         help_dialog.setText("Welcome to VFMC")
-        help_dialog.setInformativeText(help_text)
         help_dialog.setStandardButtons(QMessageBox.Ok)
         help_dialog.exec_()
         self.command_input.setFocus()
@@ -668,7 +557,7 @@ class AppWindow(QMainWindow):
 def main():
     # Configure logging
     logging.basicConfig(
-        filename="fmc-meta.log", filemode="w",
+        filename="vfmc.log", filemode="w",
         level=logging.DEBUG,
         format='%(levelname)s - %(message)s'
     )
@@ -697,79 +586,150 @@ def vfmc_command(tag):
 
 
 class Commands:
-    def __init__(self, app: AppWindow):
-        self.app = app
+    def __init__(self, window: AppWindow):
+        self.window = window
+        self.history = []
+
+
+    def execute(self, raw_command):
+        """Execute a command from the command input"""
+        cmd = raw_command
+        if not cmd:
+            return
+
+        try:
+            self.window.set_status("")
+            # Check if it's a sequence of cube moves
+            if all(m in MOVES for m in cmd.upper().split()):
+                self.window._append_moves(cmd.upper())
+            else:
+                if cmd.endswith("'"):
+                    cmd = cmd.replace("'","_prime")
+                # Assume it's a Python command
+                if cmd.find("(") < 0:
+                    cmd = f"{cmd}()"
+                # Use locals and globals from this context
+                exec(f"self.{cmd}", globals(), {'self': self})
+            command_to_save = raw_command
+            if command_to_save == "scramble":
+                command_to_save = f"""scramble("{self.window.attempt.scramble}")"""
+            self.history.append(command_to_save)
+        except Exception as e:
+            logging.error(traceback.format_exc())
+            logging.error(sys.exc_info())
+            if sum((1 for n in dir(self) if cmd.startswith(n))) == 0:
+                self.window.set_status(f"No such command: {raw_command}")
+            else:
+                self.window.set_status(f"Error: {str(e)}")
+
+        self.window.command_input.clear()
+
+
+    def x(self):
+        self.window.attempt.solution.orientation.x(1)
+    def x_prime(self):
+        self.window.attempt.solution.orientation.x(3)
+    def x2(self):
+        self.window.attempt.solution.orientation.x(2)
+
+    def y(self):
+        self.window.attempt.solution.orientation.y(1)
+    def y_prime(self):
+        self.window.attempt.solution.orientation.y(3)
+    def y2(self):
+        self.window.attempt.solution.orientation.y(2)
+
+    def z(self):
+        self.window.attempt.solution.orientation.z(1)
+    def z_prime(self):
+        self.window.attempt.solution.orientation.z(3)
+    def z2(self):
+        self.window.attempt.solution.orientation.z(2)
 
     @vfmc_command("step")
     def eoud(self):
         """Look for EO on UD axis"""
-        self.app.set_step("eo", "ud")
+        self.window.set_step("eo", "ud")
 
     @vfmc_command("step")
     def eofb(self):
         """Look for EO on FB axis"""
-        self.app.set_step("eo", "fb")
+        self.window.set_step("eo", "fb")
 
     @vfmc_command("step")
     def eorl(self):
         """Look for EO on RL axis"""
-        self.app.set_step("eo", "rl")
+        self.window.set_step("eo", "rl")
 
     @vfmc_command("step")
     def drud(self):
         """Look for DR on UD axis"""
-        self.app.set_step("dr", "ud")
+        self.window.set_step("dr", "ud")
 
     @vfmc_command("step")
     def drfb(self):
         """Look for DR on FB axis"""
-        self.app.set_step("dr", "fb")
+        self.window.set_step("dr", "fb")
 
     @vfmc_command("step")
     def drrl(self):
         """Look for DR on RL axis"""
-        self.app.set_step("dr", "rl")
+        self.window.set_step("dr", "rl")
 
     @vfmc_command("step")
     def htr(self):
         """Look for HTR"""
-        sol = self.app.attempt.solution
+        sol = self.window.attempt.solution
         variant = ""
         for v in ["ud", "fb", "rl"]:
-            if StepInfo("dr", v).is_solved(self.app.cube):
+            if StepInfo("dr", v).is_solved(self.window.cube):
                 variant = v
                 break
         if variant:
-            self.app.set_step("htr", variant)
+            self.window.set_step("htr", variant)
         else:
-            self.app.set_status("Cube is not eligible for HTR")
+            self.window.set_status("Cube is not eligible for HTR")
 
     @vfmc_command("step")
     def fr(self, axis=None):
         """Look for FR"""
-        variant = next(s.variant for s in self.app.attempt.solution.substeps() if s.kind == "dr")
+        variant = next(s.variant for s in self.window.attempt.solution.substeps() if s.kind == "dr")
         if variant is not None:
-            self.app.set_step("fr", variant)
+            self.window.set_step("fr", variant)
         else:
-            self.app.set_status("""No DR step found. Specify axis="..." to set the FR axis""")
+            self.window.set_status("""No DR step found. Specify axis="..." to set the FR axis""")
 
     @vfmc_command("niss")
     def niss(self):
         """Switch between normal and inverse scramble"""
-        self.app.attempt.set_inverse(not self.app.attempt.inverse)
+        self.window.attempt.set_inverse(not self.window.attempt.inverse)
 
     @vfmc_command("solve")
     def solve(self, num_solutions: int = 1):
         """Find and save solutions for the current step"""
-        self.app.solve(num_solutions)
+        self.window.solve(num_solutions)
+
+    def comment(self, s: str):
+        sol = self.window.attempt.solution
+        if not sol.alg.len():
+            sol = sol.previous
+        sol.comment = s
+        self.window.attempt.save_solutions([])
+
+    def cross_out(self):
+        sol = self.window.attempt.solution
+        if not sol.alg.len():
+            sol = sol.previous
+        sol.is_crossed_out = not sol.is_crossed_out
+        self.window.attempt.save_solutions([])
 
     @vfmc_command("nav")
     def save(self):
         """Save this algorithm and start a new one"""
-        sol = self.app.attempt.solution
-        if not sol.step_info.is_solved(self.app.attempt.cube):
+        sol = self.window.attempt.solution
+        if not sol.step_info.is_solved(self.window.attempt.cube):
             if sol.kind == "" or sol.previous is None:
-                self.app.set_status("Complete at least one step before saving")
+                self.window.set_status("Complete at least one step before saving")
                 return
             partial = PartialSolution(
                 kind=sol.previous.kind,
@@ -778,27 +738,38 @@ class Commands:
                 alg=sol.previous.alg.merge(sol.alg),
             )
             options = NEXT_STEPS.get((partial.kind, partial.variant), [])
-            case = sol.step_info.case_name(self.app.attempt.cube)
+            case = sol.step_info.case_name(self.window.attempt.cube)
             partial.comment = f"{sol.kind}{sol.variant}-{case}" if len(options) > 1 else case
-            self.app.attempt.save_solution(partial)
-            self.app.refresh_saved_solutions()
+            self.window.attempt.save_solution(partial)
+            self.window.refresh_saved_solutions()
             return
-        self.app.attempt.save()
+        self.window.attempt.save()
         next_steps = NEXT_STEPS.get((sol.kind, sol.variant))
         if next_steps is not None and len(next_steps) == 1:
-            self.app.attempt.advance_to(*next_steps[0])
+            self.window.attempt.advance_to(*next_steps[0])
         else:
             self.reset()
 
     @vfmc_command("nav")
     def reset(self):
         """Reset the cube to the beginning of the current step"""
-        self.app.attempt.reset()
+        self.window.attempt.reset()
 
     @vfmc_command("nav")
     def back(self):
         """Go back to the previous step"""
-        self.app.attempt.back()
+        self.window.attempt.back()
+
+    def check(self, kind: str, index: int):
+        k = kind.lower()
+        if k not in self.window.attempt.solutions_by_kind():
+            self.window.set_status(f"Bad step type: {kind}")
+            return
+        solutions = self.window.attempt.solutions_by_kind()[kind.lower()]
+        if index < 1 or index > len(solutions):
+            self.window.set_status(f"Couldn't find {kind} #{index}")
+            return
+        self.window.check_solution(solutions[index - 1])
 
     @vfmc_command("scramble")
     def scramble(self, scramble: str = None):
@@ -808,26 +779,29 @@ class Commands:
         """
         if scramble is None:
             scramble = gen_scramble()
-        self.app.set_scramble(scramble)
+        self.window.set_scramble(scramble)
 
     @vfmc_command("session")
     def save_session(self, filename):
         try:
             with open(filename, "w") as f:
-                f.writelines("\n".join(self.app.history))
-            self.app.set_status(f"Saved session to {filename}")
+                f.writelines("\n".join(self.history))
+            self.window.set_status(f"Saved session to {filename}")
         except Exception as e:
-            self.app.set_status(f"Unable to save to {filename}: {e}")
+            self.window.set_status(f"Unable to save to {filename}: {e}")
 
     @vfmc_command("session")
     def load_session(self, filename):
         try:
+            h = self.history
+            self.history = []
             with open(filename, "r") as f:
                 for cmd in f.readlines():
-                    self.app.execute_command(cmd.strip())
-            self.app.set_status(f"Loaded session from {filename}")
+                    self.execute(cmd.strip())
+            self.window.set_status(f"Loaded session from {filename}")
         except Exception as e:
-            self.app.set_status(f"Unable to load session from {filename}: {e}")
+            self.history = h
+            self.window.set_status(f"Unable to load session from {filename}: {e}")
 
 
 class CustomDelegate(QStyledItemDelegate):
@@ -835,9 +809,10 @@ class CustomDelegate(QStyledItemDelegate):
         # Override style for the active solution
         super().initStyleOption(option, index)
 
-        active = index.data(IS_ACTIVE_MARKER)
-        if active:
+        if index.data(IS_ACTIVE_MARKER):
             option.font.setBold(True)
+        if index.data(IS_CROSSED_OUT_MARKER):
+            option.font.setStrikeOut(True)
 
 
 class EventFilter():

@@ -7,9 +7,9 @@ from OpenGL.GLU import *
 import math
 import numpy as np
 
-from cubelib.attempt import PartialSolution, Attempt
+from cubelib.attempt import PartialSolution, Attempt, Orientation, AXIS_ROTATIONS
 from py_cubelib import (Cube, StepInfo)
-import pyquaternion
+from pyquaternion import Quaternion
 
 # U + L + F + R + B + D
 facelet_x = \
@@ -131,9 +131,6 @@ class CubeViz():
         self.camera_x = 0.0
         self.camera_y = -10.0
         self.camera_z = 6.0
-        self.xq_angle = 0
-        self.yq_angle = 0
-        self.zq_angle = 0
         self.view_angle = -math.pi / 6
 
         self.hide_corners = False
@@ -154,14 +151,12 @@ class CubeViz():
         # Set up the perspective
         self.resize(width, height)
 
-
     def resize(self, width, height):
         """Handle widget resize events"""
         glViewport(0, 0, width, height)
         glMatrixMode(GL_PROJECTION)
         glLoadIdentity()
         gluPerspective(25, (width / height), 0.1, 50.0)
-
 
     def should_draw_edge(self, pos_id, face):
         if self.show_all:
@@ -206,7 +201,6 @@ class CubeViz():
                 self.colors[edge_position_facelets[i][side]] = edge_piece_colors[edges[i][0]][
                                                                    (side + flipped) % 2] + (
                                                                    self.opacity,)
-
 
     def draw_facelet(self, x, y, z, color, axis):
         glPushMatrix()
@@ -274,11 +268,8 @@ class CubeViz():
                   0, 1, 0)  # Up vector
 
         # Apply rotation
-        qx = pyquaternion.Quaternion(axis=[1, 0, 0], angle=self.xq_angle)
-        qy = pyquaternion.Quaternion(axis=[0, 1, 0], angle=self.yq_angle)
-        qz = pyquaternion.Quaternion(axis=[0, 0, 1], angle=self.zq_angle)
-        qview = pyquaternion.Quaternion(axis=[0, 0, 1], angle=self.view_angle)
-        q = qview * qz * qx * qy
+        qview = Quaternion(axis=[0, 0, 1], angle=self.view_angle)
+        q = qview * rotation_for(self.attempt.solution.orientation)
         rotation_matrix = q.rotation_matrix
 
         # Order faces from back to front
@@ -312,9 +303,17 @@ class CubeViz():
     def rotate(self, dx, dy=0):
         self.view_angle += dx * .005
 
-    def set_orientation(self, x, y, z):
-        """Set the cube orientation angles"""
-        self.xq_angle = x
-        self.yq_angle = y
-        self.zq_angle = z
-
+def rotation_for(o: Orientation) -> Quaternion:
+    # Return the quaternion that brings a default cube into the given orientation
+    base = Orientation("u","f")
+    if o.top in "fb":
+        ticks = AXIS_ROTATIONS["r"].index(o.top)
+        base.x(ticks)
+        q = Quaternion(axis=[1, 0, 0], angle=-math.pi / 2 * ticks)
+    else:
+        ticks = AXIS_ROTATIONS["f"].index(o.top)
+        q = Quaternion(axis=[0, 1, 0], angle=math.pi / 2 * ticks)
+        base.z(ticks)
+    ticks = AXIS_ROTATIONS[base.top].index(o.front) - AXIS_ROTATIONS[base.top].index(base.front) + 4
+    q = Quaternion(axis=[0,0,1], angle=-math.pi / 2 * ticks) * q
+    return q

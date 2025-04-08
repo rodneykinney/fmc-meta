@@ -1,0 +1,49 @@
+<html>
+<body>
+<p>
+    Use it to refine your FMC strategy and practice case recognition
+</p>
+<p>
+    Start with <b>scramble("...")</b> to load a scramble or just <b>scramble</b> to generate a new
+    scramble
+</p>
+<h3>Solving Individual Steps</h3>
+<p>
+    Move from step to step by typing the name of the step you want to work on. The display will show
+    the bad corners/edges for the cube in its current state. Available steps are: <b>eofb</b>,<b>eorl</b>,<b>eoud</b>,<b>drud</b>,<b>drrl</b>,<b>drfb</b>,<b>htr</b>,<b>fb</b>
+</p>
+<p>
+    When starting a step, the cube will reset its orientation to put the DR axis on top and the EO axis in front.
+    You can change the orientation by entering <b>x</b>, <b>y'</b>, <b>z2</b>, etc.
+    You can also fine-tune the orientation by dragging the mouse in the display.
+</p>
+<p>
+    Enter moves (R, F', U2, etc.) to apply those moves to the cube. Enter <b>niss</b> to switch
+    between normal and inverse scrambles. Enter <b>reset</b> to return to the beginning of the
+    current step.
+</p>
+<p>
+    You can enter <b>solve</b> at any point to find the shortest unknown solution to the current
+    step. Enter <b>solve(n)
+</b> to find the next <b>n</b> solutions (up to 50 at at time)</p>
+<h3>Building a Full Solution</h3>
+<p>
+    When the step is solved, enter <b>save</b> to save to the list of solutions at the bottom.
+    If the step is not solved, you can still save it.
+    Enter <b>back</b> to return to the previous step.
+</p>
+<p>
+    Enter <b>comment("...")</b> to specify a comment for the current step
+    To indicate you are through checking a step, enter <b>cross_out</b> to draw a line through it
+</p>
+<p>
+    Click on any step at the bottom to see the steps and precede or follow it. Double click or enter <b>check("name", #)</b>
+    to load a step and start working on it. The steps that are active in the display are drawn in bold
+</p>
+<h3>Saving/Loading Your Session</h3>
+<p>
+    Enter <b>save_session("...")</b> to save all of your activity so far to a log file. You can load
+    a logfile by entering <b>load_session("...")</b>
+</p>
+</body>
+</html>

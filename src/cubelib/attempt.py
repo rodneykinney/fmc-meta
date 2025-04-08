@@ -1,3 +1,4 @@
+import math
 from typing import Optional, Dict, List, Callable
 from collections import defaultdict
 
@@ -11,6 +12,7 @@ class PartialSolution:
             variant: str = "",
             alg: Algorithm = Algorithm(""),
             previous: Optional["PartialSolution"] = None,
+            is_crossed_out: bool = False,
             comment="",
     ):
         self.kind = kind
@@ -18,7 +20,18 @@ class PartialSolution:
         self.step_info = StepInfo(kind, variant)
         self.previous = previous
         self.alg = alg
+        self.is_crossed_out = is_crossed_out
         self.comment = comment or self.kind
+        self.orientation = Orientation(*VARIANT_ORIENTATIONS.get(
+            kind, VARIANT_ORIENTATIONS.get("*")
+        )[variant])
+        if self.previous is not None:
+            if self.previous.kind == "eo":
+                if self.orientation.front not in self.previous.variant:
+                    self.orientation.y(1)
+            else:
+                self.orientation = Orientation(self.previous.orientation.top,
+                                               self.previous.orientation.front)
 
     def _add_move(self, move: str, inverse: bool):
         self.alg = self.alg.append(move, inverse)
@@ -49,7 +62,6 @@ class PartialSolution:
         return f"{self.alg} // {self.comment} ({self.full_alg().len()})"
 
 
-
 class Attempt:
     def __init__(self):
         self.scramble = ""
@@ -65,8 +77,8 @@ class Attempt:
         self.scramble = s
         self.update_cube()
 
-    def set_inverse(self, b):
-        self.inverse = b
+    def niss(self):
+        self.inverse = not self.inverse
         self.update_cube()
 
     def append_moves(self, moves: List[str], inverse: bool) -> bool:
@@ -109,7 +121,7 @@ class Attempt:
             self.solution.kind,
             self.solution.variant,
             previous=self.solution.previous,
-            alg = alg,
+            alg=alg,
             comment=self.solution.comment
         )
         self.set_solution(new_solution)
@@ -155,3 +167,53 @@ class Attempt:
         for l in self._cube_listeners:
             l()
 
+
+VARIANT_ORIENTATIONS = {
+    "" : {"": ("u","f")},
+    "eo": {
+        "ud": ("b", "u"),
+        "fb": ("u", "f"),
+        "rl": ("u", "r"),
+    },
+    "*": {
+        "ud": ("u", "f"),
+        "fb": ("b", "u"),
+        "rl": ("r", "f"),
+    }
+}
+
+AXIS_ROTATIONS = {
+    "f": ["u", "l", "d", "r"],
+    "b": ["u", "r", "d", "l"],
+    "r": ["u", "f", "d", "b"],
+    "l": ["u", "b", "d", "f"],
+    "u": ["f", "r", "b", "l"],
+    "d": ["f", "l", "b", "r"],
+}
+
+
+class Orientation:
+    def __init__(self, top: str, front: str):
+        self.top = top
+        self.front = front
+
+    def x(self, ticks: int):
+        rot = AXIS_ROTATIONS[self.right]
+        self.top = rot[(rot.index(self.top) + ticks) % 4]
+        self.front = rot[(rot.index(self.front) + ticks) % 4]
+
+    @property
+    def right(self):
+        rot = AXIS_ROTATIONS[self.top]
+        return rot[(rot.index(self.front) + 1) % 4]
+
+    def z(self, ticks: int):
+        rot = AXIS_ROTATIONS[self.front]
+        self.top = rot[(rot.index(self.top) + ticks) % 4]
+
+    def y(self, ticks: int):
+        rot = AXIS_ROTATIONS[self.top]
+        self.front = rot[(rot.index(self.front) + ticks) % 4]
+
+    def __repr__(self):
+        return f"top={self.top}, front={self.front}"
