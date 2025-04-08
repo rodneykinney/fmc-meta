@@ -22,9 +22,8 @@ class PartialSolution:
         self.alg = alg
         self.is_crossed_out = is_crossed_out
         self.comment = comment or self.kind
-        self.orientation = Orientation(*VARIANT_ORIENTATIONS.get(
-            kind, VARIANT_ORIENTATIONS.get("*")
-        )[variant])
+        d = VARIANT_ORIENTATIONS.get(kind, VARIANT_ORIENTATIONS.get("*"))
+        self.orientation = Orientation(*d.get(variant, d.get("*")))
         if self.previous is not None:
             if self.previous.kind == "eo":
                 if self.orientation.front not in self.previous.variant:
@@ -95,10 +94,18 @@ class Attempt:
             self.set_solution(PartialSolution())
             return
 
-        previous = self.solution.previous
-        self.solution = previous.previous or PartialSolution()
-
-        self.advance_to(previous.kind, previous.variant)
+        if self.solution.alg.len() > 0:
+            sol = PartialSolution(
+                self.solution.kind,
+                self.solution.variant,
+                previous=self.solution.previous,
+                alg=Algorithm(""),
+            )
+            self.set_solution(sol)
+        else:
+            previous = self.solution.previous
+            self.solution = previous.previous or PartialSolution()
+            self.advance_to(previous.kind, previous.variant)
 
     def advance_to(self, kind: str, variant: str):
         previous = self.solution if not self.solution.alg.is_empty() else self.solution.previous
@@ -179,6 +186,7 @@ VARIANT_ORIENTATIONS = {
         "ud": ("u", "f"),
         "fb": ("b", "u"),
         "rl": ("r", "f"),
+        "*": ("u", "f"),
     }
 }
 

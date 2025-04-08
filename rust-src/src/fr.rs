@@ -1,13 +1,19 @@
-use crate::{Algorithm, Solvable, CORNER_FB_FACELETS, CORNER_OPPOSITE_E_SLICE, CORNER_OPPOSITE_M_SLICE, CORNER_OPPOSITE_S_SLICE, CORNER_RL_FACELETS, CORNER_UD_FACELETS, EDGE_FB_FACELETS, EDGE_OPPOSITE_E_SLICE, EDGE_OPPOSITE_M_SLICE, EDGE_OPPOSITE_S_SLICE, EDGE_RL_FACELETS, EDGE_UD_FACELETS, HTRFB, HTRRL, HTRUD};
+use crate::solver::{solve_step, step_config};
+use crate::{
+    Algorithm, Solvable, Cube,
+    CORNER_FB_FACELETS, CORNER_OPPOSITE_E_SLICE, CORNER_OPPOSITE_M_SLICE,
+    CORNER_OPPOSITE_S_SLICE, CORNER_RL_FACELETS, CORNER_UD_FACELETS, EDGE_FB_FACELETS,
+    EDGE_OPPOSITE_E_SLICE, EDGE_OPPOSITE_M_SLICE, EDGE_OPPOSITE_S_SLICE, EDGE_RL_FACELETS,
+    EDGE_UD_FACELETS, HTRFB, HTRRL, HTRUD,
+};
 use cubelib::cube::turn::TransformableMut;
 use cubelib::cube::{Cube333, CubeFace, Direction, Transformation333, Turn333};
+use cubelib::defs::StepKind;
 use cubelib::steps::coord::Coord;
 use cubelib::steps::fr::coords::{FRCPOrbitCoord, FROrbitParityCoord, FRUDNoSliceCoord};
 use pyo3::exceptions::PyValueError;
 use pyo3::PyResult;
 use std::str::FromStr;
-use cubelib::defs::StepKind;
-use crate::solver::{solve_step, step_config};
 
 pub struct FRUD;
 impl Solvable for FRUD {
@@ -42,10 +48,11 @@ impl Solvable for FRUD {
             .get_edges()
             .iter()
             .enumerate()
-            .filter(|(pos, e)|
+            .filter(|(pos, e)| {
                 *pos as u8 != EDGE_OPPOSITE_E_SLICE[*pos]
                     && e.id != *pos as u8
-                    && e.id != EDGE_OPPOSITE_E_SLICE[*pos])
+                    && e.id != EDGE_OPPOSITE_E_SLICE[*pos]
+            })
             .count() as u8;
         let bad_edge_count = bad_edge_count.min(bad_edge_count);
 
@@ -233,5 +240,11 @@ mod tests {
         let coord = FRUDNoSliceCoord::from(&cube).val();
         assert_ne!(coord, 0);
     }
-}
 
+    #[test]
+    fn test_solve() {
+        let cube = Cube::new("U' B2 U' L2 D L2 U' L2 R U' F' L' F2 L2 B2 F2 D2 L2 B' L2 F' D2 L2 F2 U' F2 U' B' D F' U F U2 D L' B U' B2 L2 R D' F2 U2 R".to_string()).unwrap().0;
+        let solutions = FRUD.solve(&cube, 10).unwrap();
+        assert_ne!(solutions.len(), 0);
+    }
+}

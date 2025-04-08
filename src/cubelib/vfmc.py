@@ -12,7 +12,7 @@ from PyQt5.QtWidgets import (QApplication, QMainWindow, QVBoxLayout, QHBoxLayout
                              QLabel, QOpenGLWidget, QLineEdit, QPushButton,
                              QListWidget, QSplitter, QMessageBox, QSizePolicy, QStyledItemDelegate)
 from PyQt5.QtCore import Qt, QTimer, QEvent
-from PyQt5.QtGui import QSurfaceFormat, QColor
+from PyQt5.QtGui import QSurfaceFormat, QColor, QKeySequence
 
 import cubelib.attempt
 from cubelib.attempt import PartialSolution, Attempt
@@ -193,8 +193,18 @@ class AppWindow(QMainWindow):
 
         current_container = QWidget()
         current_layout = QVBoxLayout(current_container)
-        self.current_solution = QListWidget()
-        self.current_solution.setSelectionMode(QListWidget.MultiSelection)
+        class CustomListWidget(QListWidget):
+            # Override key event to copy all selected lines to the clilpboard
+            def keyPressEvent(self, event):
+                    if event.matches(QKeySequence.Copy):
+                        selected_items = self.selectedItems()
+                        if selected_items:
+                            clipboard_text = "\n".join(item.text() for item in selected_items)
+                            QApplication.clipboard().setText(clipboard_text)
+                    else:
+                        super().keyPressEvent(event)  # Default behavior for other keys
+        self.current_solution = CustomListWidget()
+        self.current_solution.setSelectionMode(QListWidget.ContiguousSelection)
         self.current_solution.setStyleSheet("font-size: 16px;")
         current_layout.addWidget(self.current_solution)
         info_layout.addWidget(current_container)
@@ -317,7 +327,7 @@ class AppWindow(QMainWindow):
                               1)  # Add stretch factor of 1 to expand vertically
 
         # Set initial scramble
-        self.set_scramble(gen_scramble())
+        self.commands.execute("scramble")
 
         # Set focus to command input
         self.command_input.setFocus()

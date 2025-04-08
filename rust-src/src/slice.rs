@@ -1,4 +1,5 @@
 use crate::fr::{FRFB, FRRL, FRUD};
+use crate::Cube;
 use crate::htr::{HTRFB, HTRUD, HTRRL};
 use crate::solver::{solve_step, step_config};
 use crate::{Algorithm, Solvable};
@@ -46,16 +47,12 @@ impl Solvable for SliceUD {
         format!("{}c{}e", bad_corner_count, bad_edge_count).to_string()
     }
 
-    fn should_draw_edge(&self, _cube: &Cube333, _pos: usize, _facelet: u8) -> bool {
-        true
-        // let e = cube.edges.get_edges()[pos];
-        // e.id != pos as u8
+    fn should_draw_edge(&self, _cube: &Cube333, pos: usize, _facelet: u8) -> bool {
+        return pos < 4 || pos > 7;
     }
 
     fn should_draw_corner(&self, _cube: &Cube333, _pos: usize, _facelet: u8) -> bool {
         true
-        // let c = cube.corners.get_corners()[pos];
-        // c.id != pos as u8
     }
     fn solve(&self, cube: &Cube333, count: usize) -> PyResult<Vec<Algorithm>> {
         solve_step(cube, step_config(StepKind::FINLS, ""), count, false)
@@ -83,15 +80,14 @@ impl Solvable for SliceFB {
         SliceUD.case_name(&cube)
     }
 
-    fn should_draw_edge(&self, _cube: &Cube333, _pos: usize, _facelet: u8) -> bool {
-        // let e = cube.edges.get_edges()[pos];
-        // e.id != pos as u8
-        true
+    fn should_draw_edge(&self, _cube: &Cube333, pos: usize, _facelet: u8) -> bool {
+        match pos {
+            1 | 3 | 9 | 11 => false,
+            _ => true,
+        }
     }
 
     fn should_draw_corner(&self, _cube: &Cube333, _pos: usize, _facelet: u8) -> bool {
-        // let c = cube.corners.get_corners()[pos];
-        // c.id != pos as u8
         true
     }
     fn solve(&self, cube: &Cube333, count: usize) -> PyResult<Vec<Algorithm>> {
@@ -121,18 +117,33 @@ impl Solvable for SliceRL {
         SliceUD.case_name(&cube)
     }
 
-    fn should_draw_edge(&self, _cube: &Cube333, _pos: usize, _facelet: u8) -> bool {
-        // let e = cube.edges.get_edges()[pos];
-        // e.id != pos as u8
-        true
+    fn should_draw_edge(&self, _cube: &Cube333, pos: usize, _facelet: u8) -> bool {
+        match pos {
+            0 | 2 | 8 | 10 => false,
+            _ => true,
+        }
     }
 
     fn should_draw_corner(&self, _cube: &Cube333, _pos: usize, _facelet: u8) -> bool {
-        // let c = cube.corners.get_corners()[pos];
-        // c.id != pos as u8
         false
     }
     fn solve(&self, cube: &Cube333, count: usize) -> PyResult<Vec<Algorithm>> {
         solve_step(cube, step_config(StepKind::FINLS, ""), count, false)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use cubelib::cube::turn::TurnableMut;
+    use cubelib::cube::Cube333;
+    use cubelib::cube::CubeFace;
+    use cubelib::cube::Direction;
+
+    #[test]
+    fn test_slice_ud() {
+        let cube = Cube::new("U2 L' B2 R' U2 F L2 B2 D2 L2 F2 U2 L2 R' F2 U2 R' F2 U B' R2 B R' B R F2 R D' L2 D' B2 R U F2 B2 U L2 D".to_string()).unwrap().0;
+        let slice_ud = SliceUD {};
+        assert!(slice_ud.is_eligible(&cube));
     }
 }
