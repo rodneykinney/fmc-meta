@@ -4,6 +4,7 @@ mod fr;
 mod htr;
 mod solver;
 mod slice;
+mod finish;
 
 use pyo3::prelude::*;
 use std::str::FromStr;
@@ -15,6 +16,7 @@ use cubelib::cube::turn::{ApplyAlgorithm, Direction, Invertible, InvertibleMut};
 use cubelib::cube::{Corner, Cube333, Turn333};
 use crate::dr::{DRFB, DRRL, DRUD};
 use crate::eo::{EOFB, EORL, EOUD};
+use crate::finish::Finish;
 use crate::fr::{FRFB, FRRL, FRUD};
 use crate::slice::{SliceUD, SliceFB, SliceRL};
 use crate::htr::{HTRFB, HTRRL, HTRUD};
@@ -368,8 +370,9 @@ impl StepBuilder {
                 "rl" => Ok(Box::new(SliceRL)),
                 _ => Err(format!("Unknown variant '{}' for dr", variant).into()),
             },
+            "finish" => Ok(Box::new(Finish)),
             "" => Ok(Box::new(SCRAMBLED)),
-            _ => Err(format!("Unknown kind '{}'", kind).into()),
+            _ => Err(format!("Unknown step '{}'", kind).into()),
         }
     }
 }

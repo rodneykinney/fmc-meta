@@ -62,6 +62,7 @@ AXIS_ORIENTATIONS = {
 
 IS_ACTIVE_MARKER = Qt.UserRole
 IS_CROSSED_OUT_MARKER = Qt.UserRole + 1
+SOLUTION = Qt.UserRole + 2
 
 
 class CubeGLWidget(QOpenGLWidget):
@@ -223,7 +224,7 @@ class AppWindow(QMainWindow):
         status_container.setSizePolicy(QSizePolicy.Preferred,
                                        QSizePolicy.Minimum)  # Minimize vertical space
         status_layout = QVBoxLayout(status_container)
-        status_layout.setContentsMargins(10, 0, 10, 0)  # Remove all margins
+        status_layout.setContentsMargins(10, 0, 10, 0)  # No vertical margins
         status_layout.setSpacing(0)  # Remove spacing
         self.status_label = QLabel()
         self.status_label.setMaximumHeight(20)  # Limit the height
@@ -267,29 +268,49 @@ class AppWindow(QMainWindow):
             }}
         """
 
-        def build_solution_widget(kind: str):
+        def build_solution_widget(kind: str, label: Optional[str] = None):
             container = QWidget()
+            container.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
             layout = QVBoxLayout(container)
-            layout.addWidget(QLabel(f"{kind.upper()}:"))
+            layout.setContentsMargins(0,0,10,10)
+            layout.setSpacing(2)
+            label = label or kind.upper()
+            layout.addWidget(QLabel(f"{label}:"))
             list = QListWidget()
-            list.setMinimumHeight(150)  # Set minimum height
             list.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
             list.itemDoubleClicked.connect(lambda item: self.activate_item(kind, item, list))
             list.itemSelectionChanged.connect(lambda: self.item_selected(kind, list))
             list.setStyleSheet(list_style)
             list.installEventFilter(self)  # Allow key handling
-            layout.addWidget(list)
-            solution_lists_layout.addWidget(container)
-            self.solution_widgets[kind] = list
             list.setItemDelegate(CustomDelegate())
             list.setProperty("kind", kind)
-            return list
+            layout.addWidget(list)
+            self.solution_widgets[kind] = list
+            return container
 
         # Solution List Widgets
-        self.eo_solution_list = build_solution_widget("eo")
-        self.dr_solution_list = build_solution_widget("dr")
-        self.htr_solution_list = build_solution_widget("htr")
-        self.fr_solution_list = build_solution_widget("fr")
+        solution_lists_layout.addWidget(build_solution_widget("eo"))
+        solution_lists_layout.addWidget(build_solution_widget("dr"))
+        container = QWidget()
+        layout = QVBoxLayout(container)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(3)
+        layout.addWidget(build_solution_widget("htr"))
+        layout.addWidget(build_solution_widget("slice","Slice"))
+        solution_lists_layout.addWidget(container)
+        container = QWidget()
+        layout = QVBoxLayout(container)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(3)
+        layout.addWidget(build_solution_widget("fr"))
+        layout.addWidget(build_solution_widget("finish","Finish"))
+        solution_lists_layout.addWidget(container)
+        # solution_lists_layout.addWidget(build_solution_widget("eo"))
+        # self.dr_solution_list = build_solution_widget("dr")
+        # self.htr_solution_list = build_solution_widget("htr")
+        # self.fr_solution_list = build_solution_widget("fr")
+        # self.slice_solution_list = build_solution_widget("slice", "Slice")
+        # self.finish_solution_list = build_solution_widget("finish", "Finish")
 
         solutions_layout.addLayout(solution_lists_layout)
         main_layout.addWidget(solutions_container,
@@ -332,39 +353,21 @@ class AppWindow(QMainWindow):
 
     def mark_active_solution(self):
         for k, w in self.solution_widgets.items():
-            saved_solutions = self.attempt.solutions_by_kind()[k]
             for i in range(w.count()):
                 item = w.item(i)
-                sol = saved_solutions[i]
+                sol = item.data(SOLUTION)
                 item.setData(IS_ACTIVE_MARKER, sol in self.attempt.solution.substeps())
                 item.setData(IS_CROSSED_OUT_MARKER, sol.is_crossed_out)
 
     def refresh_saved_solutions(self):
         solutions = self.attempt.solutions_by_kind()
-        # EO solutions
-        self.eo_solution_list.clear()
-        for i, sol in enumerate(solutions.get("eo", [])):
-            padding = "   " if i < 9 else ("  " if i < 99 else " ")
-            self.eo_solution_list.addItem(f"{i + 1}.{padding}{sol}")
 
-        # DR solutions
-        self.dr_solution_list.clear()
-        for i, sol in enumerate(solutions.get("dr", [])):
-            padding = "   " if i < 9 else ("  " if i < 99 else " ")
-            self.dr_solution_list.addItem(f"{i + 1}.{padding}{sol}")
-
-        # HTR solutions
-        self.htr_solution_list.clear()
-        for i, sol in enumerate(solutions.get("htr", [])):
-            padding = "   " if i < 9 else ("  " if i < 99 else " ")
-            self.htr_solution_list.addItem(f"{i + 1}.{padding}{sol}")
-
-        # FR solutions
-        self.fr_solution_list.clear()
-        for i, sol in enumerate(solutions.get("fr", [])):
-            padding = "   " if i < 9 else ("  " if i < 99 else " ")
-            self.fr_solution_list.addItem(f"{i + 1}.{padding}{sol}")
-
+        for kind,list in self.solution_widgets.items():
+            list.clear()
+            for i, sol in enumerate(solutions.get(kind, [])):
+                padding = "   " if i < 9 else ("  " if i < 99 else " ")
+                list.addItem(f"{i + 1}.{padding}{sol}")
+                list.item(list.count()-1).setData(SOLUTION, sol)
         self.mark_active_solution()
 
     def set_scramble(self, scramble: str):
@@ -431,23 +434,23 @@ class AppWindow(QMainWindow):
                 return False
 
     def activate_item(self, kind, item, list_widget):
-        index = list_widget.row(item)+1
+        sol = item.data(SOLUTION)
+        index = self.attempt.solutions_by_kind()[sol.kind].index(sol) + 1
         # Execute via self.commands to get this into the history
         self.commands.execute(f'check("{kind}",{index})')
 
     def item_selected(self, kind, list_widget):
         selected_item = list_widget.currentItem()
 
-        selected_step = self.attempt.solutions_by_kind()[kind][list_widget.row(selected_item)]
+        selected_step = selected_item.data(SOLUTION)
 
         for k, w in self.solution_widgets.items():
             w.blockSignals(True)
             w.clearSelection()
             w.setSelectionMode(QListWidget.ContiguousSelection)
-            saved_solutions = self.attempt.solutions_by_kind()[k]
             for i in range(w.count()):
                 item = w.item(i)
-                sol = saved_solutions[i]
+                sol = item.data(SOLUTION)
                 highlight = sol in selected_step.substeps() or selected_step in sol.substeps()
                 item.setSelected(highlight)
                 if highlight:
@@ -588,6 +591,7 @@ def vfmc_command(tag):
 class Commands:
     def __init__(self, window: AppWindow):
         self.window = window
+        self.attempt = window.attempt
         self.history = []
 
 
@@ -612,7 +616,7 @@ class Commands:
                 exec(f"self.{cmd}", globals(), {'self': self})
             command_to_save = raw_command
             if command_to_save == "scramble":
-                command_to_save = f"""scramble("{self.window.attempt.scramble}")"""
+                command_to_save = f"""scramble("{self.attempt.scramble}")"""
             self.history.append(command_to_save)
         except Exception as e:
             logging.error(traceback.format_exc())
@@ -626,25 +630,25 @@ class Commands:
 
 
     def x(self):
-        self.window.attempt.solution.orientation.x(1)
+        self.attempt.solution.orientation.x(1)
     def x_prime(self):
-        self.window.attempt.solution.orientation.x(3)
+        self.attempt.solution.orientation.x(3)
     def x2(self):
-        self.window.attempt.solution.orientation.x(2)
+        self.attempt.solution.orientation.x(2)
 
     def y(self):
-        self.window.attempt.solution.orientation.y(1)
+        self.attempt.solution.orientation.y(1)
     def y_prime(self):
-        self.window.attempt.solution.orientation.y(3)
+        self.attempt.solution.orientation.y(3)
     def y2(self):
-        self.window.attempt.solution.orientation.y(2)
+        self.attempt.solution.orientation.y(2)
 
     def z(self):
-        self.window.attempt.solution.orientation.z(1)
+        self.attempt.solution.orientation.z(1)
     def z_prime(self):
-        self.window.attempt.solution.orientation.z(3)
+        self.attempt.solution.orientation.z(3)
     def z2(self):
-        self.window.attempt.solution.orientation.z(2)
+        self.attempt.solution.orientation.z(2)
 
     @vfmc_command("step")
     def eoud(self):
@@ -679,7 +683,7 @@ class Commands:
     @vfmc_command("step")
     def htr(self):
         """Look for HTR"""
-        sol = self.window.attempt.solution
+        sol = self.attempt.solution
         variant = ""
         for v in ["ud", "fb", "rl"]:
             if StepInfo("dr", v).is_solved(self.window.cube):
@@ -693,16 +697,26 @@ class Commands:
     @vfmc_command("step")
     def fr(self, axis=None):
         """Look for FR"""
-        variant = next(s.variant for s in self.window.attempt.solution.substeps() if s.kind == "dr")
+        variant = next(s.variant for s in self.attempt.solution.substeps() if s.kind == "dr")
         if variant is not None:
             self.window.set_step("fr", variant)
         else:
             self.window.set_status("""No DR step found. Specify axis="..." to set the FR axis""")
+            
+    def slice(self, axis=None):
+        variant = next(s.variant for s in self.attempt.solution.substeps() if s.kind == "dr")
+        if variant is not None:
+            self.window.set_step("slice", variant)
+        else:
+            self.window.set_status("""No DR step found. Specify axis="..." to set the slice axis""")
+
+    def finish(self, axis=None):
+        self.window.set_step("finish", "")
 
     @vfmc_command("niss")
     def niss(self):
         """Switch between normal and inverse scramble"""
-        self.window.attempt.set_inverse(not self.window.attempt.inverse)
+        self.attempt.niss()
 
     @vfmc_command("solve")
     def solve(self, num_solutions: int = 1):
@@ -710,24 +724,24 @@ class Commands:
         self.window.solve(num_solutions)
 
     def comment(self, s: str):
-        sol = self.window.attempt.solution
+        sol = self.attempt.solution
         if not sol.alg.len():
             sol = sol.previous
         sol.comment = s
-        self.window.attempt.save_solutions([])
+        self.attempt.save_solutions([])
 
-    def cross_out(self):
-        sol = self.window.attempt.solution
+    def done(self):
+        sol = self.attempt.solution
         if not sol.alg.len():
             sol = sol.previous
         sol.is_crossed_out = not sol.is_crossed_out
-        self.window.attempt.save_solutions([])
+        self.attempt.save_solutions([])
 
     @vfmc_command("nav")
     def save(self):
         """Save this algorithm and start a new one"""
-        sol = self.window.attempt.solution
-        if not sol.step_info.is_solved(self.window.attempt.cube):
+        sol = self.attempt.solution
+        if not sol.step_info.is_solved(self.attempt.cube):
             if sol.kind == "" or sol.previous is None:
                 self.window.set_status("Complete at least one step before saving")
                 return
@@ -738,34 +752,34 @@ class Commands:
                 alg=sol.previous.alg.merge(sol.alg),
             )
             options = NEXT_STEPS.get((partial.kind, partial.variant), [])
-            case = sol.step_info.case_name(self.window.attempt.cube)
+            case = sol.step_info.case_name(self.attempt.cube)
             partial.comment = f"{sol.kind}{sol.variant}-{case}" if len(options) > 1 else case
-            self.window.attempt.save_solution(partial)
+            self.attempt.save_solution(partial)
             self.window.refresh_saved_solutions()
             return
-        self.window.attempt.save()
+        self.attempt.save()
         next_steps = NEXT_STEPS.get((sol.kind, sol.variant))
         if next_steps is not None and len(next_steps) == 1:
-            self.window.attempt.advance_to(*next_steps[0])
+            self.attempt.advance_to(*next_steps[0])
         else:
             self.reset()
 
     @vfmc_command("nav")
     def reset(self):
         """Reset the cube to the beginning of the current step"""
-        self.window.attempt.reset()
+        self.attempt.reset()
 
     @vfmc_command("nav")
     def back(self):
         """Go back to the previous step"""
-        self.window.attempt.back()
+        self.attempt.back()
 
     def check(self, kind: str, index: int):
         k = kind.lower()
-        if k not in self.window.attempt.solutions_by_kind():
+        if k not in self.attempt.solutions_by_kind():
             self.window.set_status(f"Bad step type: {kind}")
             return
-        solutions = self.window.attempt.solutions_by_kind()[kind.lower()]
+        solutions = self.attempt.solutions_by_kind()[kind.lower()]
         if index < 1 or index > len(solutions):
             self.window.set_status(f"Couldn't find {kind} #{index}")
             return

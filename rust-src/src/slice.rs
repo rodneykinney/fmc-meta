@@ -1,4 +1,5 @@
 use crate::fr::{FRFB, FRRL, FRUD};
+use crate::htr::{HTRFB, HTRUD, HTRRL};
 use crate::solver::{solve_step, step_config};
 use crate::{Algorithm, Solvable};
 use cubelib::cube::turn::TransformableMut;
@@ -19,7 +20,7 @@ impl Solvable for SliceUD {
     }
 
     fn is_eligible(&self, cube: &Cube333) -> bool {
-        FRUD.is_solved(cube)
+        HTRUD.is_solved(cube)
     }
 
     fn case_name(&self, cube: &Cube333) -> String {
@@ -27,8 +28,13 @@ impl Solvable for SliceUD {
         let mut bad_corner_count = 0;
         let edges = cube.edges.get_edges();
         let corners = cube.corners.get_corners();
-        for i in 0..12 {
-            if edges[i].id as usize != i{
+        for i in 0..4 {
+            if edges[i].id as usize != i {
+                bad_edge_count += 1;
+            }
+        }
+        for i in 8.. 12 {
+            if edges[i].id as usize != i {
                 bad_edge_count += 1;
             }
         }
@@ -68,7 +74,7 @@ impl Solvable for SliceFB {
     }
 
     fn is_eligible(&self, cube: &Cube333) -> bool {
-        FRFB.is_solved(cube)
+        HTRFB.is_solved(cube)
     }
 
     fn case_name(&self, cube: &Cube333) -> String {
@@ -106,7 +112,7 @@ impl Solvable for SliceRL {
     }
 
     fn is_eligible(&self, cube: &Cube333) -> bool {
-        FRRL.is_solved(cube)
+        HTRRL.is_solved(cube)
     }
 
     fn case_name(&self, cube: &Cube333) -> String {
