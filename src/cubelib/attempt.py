@@ -12,7 +12,7 @@ class PartialSolution:
             variant: str = "",
             alg: Algorithm = Algorithm(""),
             previous: Optional["PartialSolution"] = None,
-            is_crossed_out: bool = False,
+            is_done: bool = False,
             comment="",
     ):
         self.kind = kind
@@ -20,7 +20,7 @@ class PartialSolution:
         self.step_info = StepInfo(kind, variant)
         self.previous = previous
         self.alg = alg
-        self.is_crossed_out = is_crossed_out
+        self.is_done = is_done
         self.comment = comment or self.kind
         d = VARIANT_ORIENTATIONS.get(kind, VARIANT_ORIENTATIONS.get("*"))
         self.orientation = Orientation(*d.get(variant, d.get("*")))
@@ -32,7 +32,7 @@ class PartialSolution:
                 self.orientation = Orientation(self.previous.orientation.top,
                                                self.previous.orientation.front)
 
-    def _add_move(self, move: str, inverse: bool):
+    def append_move(self, move: str, inverse: bool):
         self.alg = self.alg.append(move, inverse)
 
     def allows_moves(self, moves: str) -> bool:
@@ -72,9 +72,11 @@ class Attempt:
         self._solution_listeners = []
 
     def set_scramble(self, s):
-        self.clear()
+        self._saved_by_kind.clear()
         self.scramble = s
+        self.set_solution(PartialSolution("", "", previous=None))
         self.update_cube()
+        self.notify_solution_listeners()
 
     def niss(self):
         self.inverse = not self.inverse
@@ -85,7 +87,7 @@ class Attempt:
             return False
 
         for m in moves:
-            self.solution._add_move(m, inverse)
+            self.solution.append_move(m, inverse)
         self.update_cube()
         return True
 
@@ -157,13 +159,7 @@ class Attempt:
             existing_algs = set(str(s.full_alg()) for s in existing)
             existing += [s for s in sols_for_kind if not str(s.full_alg()) in existing_algs]
             existing.sort(key=lambda s: (s.alg.len(), s.variant))
-        for l in self._solution_listeners:
-            l()
-
-    def clear(self):
-        self._saved_by_kind.clear()
-        self.scramble = ""
-        self.set_solution(PartialSolution("", "", previous=None))
+        self.notify_solution_listeners()
 
     def add_solution_listener(self, callback: Callable):
         self._solution_listeners.append(callback)
@@ -176,6 +172,13 @@ class Attempt:
         self.cube.apply(self.solution.full_alg())
         if self.inverse:
             self.cube.invert()
+        self.notify_cube_listeners()
+
+    def notify_solution_listeners(self):
+        for l in self._solution_listeners:
+            l()
+
+    def notify_cube_listeners(self):
         for l in self._cube_listeners:
             l()
 

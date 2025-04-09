@@ -28,8 +28,8 @@ impl Solvable for Finish {
             corners.iter().enumerate().filter(
                 |(i, c)| (**c).id as usize != *i
             ).count();
+        let c_string = if bad_corner_count > 0 {format!("{}c", bad_corner_count) } else {"".to_string()};
         let e_string = if bad_edge_count > 0 {format!("{}e", bad_edge_count) } else {"".to_string()};
-        let c_string = if bad_corner_count > 0 {format!("{}c", bad_edge_count) } else {"".to_string()};
         format!("{}{}", c_string, e_string)
     }
 

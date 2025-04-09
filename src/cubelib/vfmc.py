@@ -39,6 +39,9 @@ NEXT_STEPS = {
     ("fr", "ud"): [("slice", "ud")],
     ("fr", "fb"): [("slice", "fb")],
     ("fr", "rl"): [("slice", "rl")],
+    ("slice", "ud"): [("finish", "")],
+    ("slice", "fb"): [("finish", "")],
+    ("slice", "rl"): [("finish", "")],
 }
 
 PREFERRED_AXIS = {
@@ -61,7 +64,7 @@ AXIS_ORIENTATIONS = {
 }
 
 IS_ACTIVE_MARKER = Qt.UserRole
-IS_CROSSED_OUT_MARKER = Qt.UserRole + 1
+IS_DONE_MARKER = Qt.UserRole + 1
 SOLUTION = Qt.UserRole + 2
 
 
@@ -128,6 +131,7 @@ class AppWindow(QMainWindow):
 
         self.attempt = Attempt()
         self.attempt.add_cube_listener(self.refresh_current_solution)
+        self.attempt.add_cube_listener(self.mark_active_solution)
         self.attempt.add_solution_listener(self.refresh_saved_solutions)
         self.previous_solution = self.attempt.solution
 
@@ -243,6 +247,7 @@ class AppWindow(QMainWindow):
         solution_lists_layout = QHBoxLayout()
         solution_lists_layout.setSpacing(10)  # Add some spacing between columns
 
+        self.step_order = ["eo", "dr", "htr", "fr", "slice", "finish"]
         self.solution_widgets = {}
 
         # Define colors for different states
@@ -345,29 +350,40 @@ class AppWindow(QMainWindow):
         else:
             self.case_label.setText("")
 
-        if self.previous_solution != self.attempt.solution:
-            self.mark_active_solution()
-        self.previous_solution = self.attempt.solution
-
     def mark_active_solution(self):
-        for k, w in self.solution_widgets.items():
+        sol = self.attempt.solution
+        active_items = []
+        for k in self.step_order:
+            w = self.solution_widgets[k]
+            w.clearSelection()
+            w.setCurrentItem(None)
             for i in range(w.count()):
                 item = w.item(i)
-                sol = item.data(SOLUTION)
-                item.setData(IS_ACTIVE_MARKER, sol in self.attempt.solution.substeps())
-                item.setData(IS_CROSSED_OUT_MARKER, sol.is_crossed_out)
-                item.setSelected(sol == self.attempt.solution)
+                active = item.data(SOLUTION) in sol.substeps()
+                item.setData(IS_ACTIVE_MARKER, active)
+                if active:
+                    active_items.append(item)
+        if active_items:
+            w = self.solution_widgets[active_items[-1].data(SOLUTION).kind]
+            w.setCurrentItem(active_items[-1])
+
 
     def refresh_saved_solutions(self):
         solutions = self.attempt.solutions_by_kind()
 
+        active_item = None
         for kind,list in self.solution_widgets.items():
             list.clear()
             for i, sol in enumerate(solutions.get(kind, [])):
                 padding = "   " if i < 9 else ("  " if i < 99 else " ")
                 list.addItem(f"{i + 1}.{padding}{sol}")
-                list.item(list.count()-1).setData(SOLUTION, sol)
-        self.mark_active_solution()
+                item = list.item(list.count()-1)
+                item.setData(SOLUTION, sol)
+                item.setData(IS_ACTIVE_MARKER, sol in self.attempt.solution.substeps())
+                if sol == self.attempt.solution:
+                    active_item = item
+        if active_item:
+            active_item.setSelected(True)
 
     def set_scramble(self, scramble: str):
         """Set the cube to a specific scramble"""
@@ -448,6 +464,7 @@ class AppWindow(QMainWindow):
         for k, w in self.solution_widgets.items():
             w.blockSignals(True)
             w.clearSelection()
+            w.setCurrentItem(None)
             w.setSelectionMode(QListWidget.ContiguousSelection)
             for i in range(w.count()):
                 item = w.item(i)
@@ -488,7 +505,7 @@ class AppWindow(QMainWindow):
             if len(solutions) >= num_solutions:
                 break
         if solutions:
-            self.set_status(f"Found {len(solutions)} solutions to {sol.kind}{sol.variant}")
+            self.set_status(f"Found {len(solutions)} solution{'' if len(solutions)==1 else 's'}")
             self.attempt.save_solutions(solutions)
             self.check_solution(solutions[-1])
         else:
@@ -512,12 +529,12 @@ class AppWindow(QMainWindow):
                         return True
             elif (key == Qt.Key_Tab or key == Qt.Key_Backtab):
                 # Handle Tab and Shift+Tab to move between solution lists
-                order = ["eo", "dr", "htr", "fr", "slice", "finish"]
                 if obj not in self.solution_widgets.values() and obj != self.command_input:
                     return False
                 def select_widget(widget):
                     if widget.count():
                         widget.clearSelection()
+                        widget.setCurrentItem(None)
                         selection = 0
                         for i in range(0, widget.count()):
                             if widget.item(i).data(IS_ACTIVE_MARKER):
@@ -531,19 +548,19 @@ class AppWindow(QMainWindow):
                         self.command_input.setFocus()
                         return True
                 if obj == self.command_input:
-                    for k in reversed(order):
+                    for k in reversed(self.step_order):
                         w = self.solution_widgets[k]
                         for i in range(0,w.count()):
                             if w.item(i).data(IS_ACTIVE_MARKER):
                                 return select_widget(w)
                     return select_widget(self.solution_widgets["eo"])
-                index = order.index(obj.property("kind"))
+                index = self.step_order.index(obj.property("kind"))
                 next_index = index
                 if key == Qt.Key_Backtab:
-                    next_index = (index - 1) % len(order)
+                    next_index = (index - 1) % len(self.step_order)
                 else:
-                    next_index = (index + 1) % len(order)
-                return select_widget(self.solution_widgets[order[next_index]])
+                    next_index = (index + 1) % len(self.step_order)
+                return select_widget(self.solution_widgets[self.step_order[next_index]])
 
         return super().eventFilter(obj, event)
 
@@ -752,14 +769,26 @@ class Commands:
         if not sol.alg.len():
             sol = sol.previous
         sol.comment = s
-        self.attempt.save_solutions([])
+        widget = self.window.solution_widgets[sol.kind]
+        for i in range(widget.count()):
+            item = widget.item(i)
+            if item.data(SOLUTION) == sol:
+                padding = "   " if i < 9 else ("  " if i < 99 else " ")
+                item.setText(f"{i + 1}.{padding}{sol}")
+        widget.update()
+
 
     def done(self):
         sol = self.attempt.solution
         if not sol.alg.len() and sol.previous:
             sol = sol.previous
-        sol.is_crossed_out = not sol.is_crossed_out
-        self.attempt.save_solutions([])
+        sol.is_done = not sol.is_done
+        widget = self.window.solution_widgets[sol.kind]
+        for i in range(widget.count()):
+            item = widget.item(i)
+            if item.data(SOLUTION) == sol:
+                item.setData(IS_DONE_MARKER, sol.is_done)
+        widget.update()
 
     @vfmc_command("nav")
     def save(self):
@@ -849,7 +878,7 @@ class SolutionItemRenderer(QStyledItemDelegate):
 
         if index.data(IS_ACTIVE_MARKER):
             option.font.setBold(True)
-        if index.data(IS_CROSSED_OUT_MARKER):
+        if index.data(IS_DONE_MARKER):
             option.font.setStrikeOut(True)
 
 class CurrentSolutionWidget(QListWidget):
