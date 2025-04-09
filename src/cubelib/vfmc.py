@@ -221,6 +221,7 @@ class AppWindow(QMainWindow):
         self.command_input = QLineEdit()
         self.command_input.returnPressed.connect(
             lambda: self.commands.execute(self.command_input.text().strip()))
+        self.command_input.installEventFilter(self)
         help_button = QPushButton("Help")
         help_button.clicked.connect(self.show_help)
 
@@ -255,7 +256,8 @@ class AppWindow(QMainWindow):
         self.solution_widgets = {}
 
         # Define colors for different states
-        selection_color = "#33ff9e"  # "#aaaaff"
+        selection_color = "#22dd7c"
+        active_selection_color = "#33ff9e"
 
         # Create a common stylesheet for all list widgets with focus-independent styling
         list_style = f"""
@@ -273,7 +275,7 @@ class AppWindow(QMainWindow):
             
             /* Keep selection color even when widget loses focus */
             QListWidget::item:selected:!active {{ 
-                background-color: {selection_color}; 
+                background-color: {active_selection_color}; 
                 color: black;
             }}
         """
@@ -315,12 +317,8 @@ class AppWindow(QMainWindow):
         layout.addWidget(build_solution_widget("fr"))
         layout.addWidget(build_solution_widget("finish","Finish"))
         solution_lists_layout.addWidget(container)
-        # solution_lists_layout.addWidget(build_solution_widget("eo"))
-        # self.dr_solution_list = build_solution_widget("dr")
-        # self.htr_solution_list = build_solution_widget("htr")
-        # self.fr_solution_list = build_solution_widget("fr")
-        # self.slice_solution_list = build_solution_widget("slice", "Slice")
-        # self.finish_solution_list = build_solution_widget("finish", "Finish")
+
+        self.current_solution.installEventFilter(self)
 
         solutions_layout.addLayout(solution_lists_layout)
         main_layout.addWidget(solutions_container,
@@ -451,6 +449,8 @@ class AppWindow(QMainWindow):
 
     def item_selected(self, kind, list_widget):
         selected_item = list_widget.currentItem()
+        if not selected_item:
+            return
 
         selected_step = selected_item.data(SOLUTION)
 
@@ -508,31 +508,47 @@ class AppWindow(QMainWindow):
     def eventFilter(self, obj, event):
         """Handle keyboard events for navigating between solution lists"""
         # Check if this is a key event for one of our solution lists
-        solution_list_objects = list(self.solution_widgets.values())
-        if event.type() == QEvent.KeyPress and obj in solution_list_objects:
-            # Define key mappings
+        if event.type() == QEvent.KeyPress:
             key = event.key()
-
-            kind = obj.property("kind")
-            if not kind:
-                return False
-
-            # Enter key to check the currently selected solution
             if key == Qt.Key_Return or key == Qt.Key_Enter:
-                if obj.currentItem():
-                    self.activate_item(kind, obj.currentItem(), obj)
-                    return True
-
-            # Handle Tab and Shift+Tab to move between solution lists
-            order = ["eo", "dr", "htr", "fr"]
-            if (key == Qt.Key_Tab):
+                if obj in list(self.solution_widgets.values()):
+                    kind = obj.property("kind")
+                    if not kind:
+                        return False
+                    # Enter key to check the currently selected solution
+                    if obj.currentItem():
+                        self.activate_item(kind, obj.currentItem(), obj)
+                        return True
+            elif (key == Qt.Key_Tab):
+                if obj not in self.solution_widgets.values() and obj != self.command_input:
+                    return False
+                def select_widget(widget):
+                    if widget.count():
+                        widget.clearSelection()
+                        selection = 0
+                        for i in range(0, widget.count()):
+                            if widget.item(i).data(IS_ACTIVE_MARKER):
+                                selection = i
+                                break
+                        widget.setCurrentItem(widget.item(selection))
+                        widget.setFocus()
+                        widget.update()
+                        return True
+                    else:
+                        self.command_input.setFocus()
+                        return True
+                if obj == self.command_input:
+                    return select_widget(self.solution_widgets["eo"])
+                # Handle Tab and Shift+Tab to move between solution lists
+                order = ["eo", "dr", "htr", "fr", "slice", "finish"]
                 index = order.index(obj.property("kind"))
                 next_index = index
                 if event.modifiers() & Qt.ShiftModifier:
                     next_index = (index - 1) % len(order)
                 else:
                     next_index = (index + 1) % len(order)
-                self.solution_widgets[order[next_index]].setFocus()
+                return select_widget(self.solution_widgets[order[next_index]])
+
         return super().eventFilter(obj, event)
 
     def check_solution(self, solution):
