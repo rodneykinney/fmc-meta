@@ -356,6 +356,7 @@ class AppWindow(QMainWindow):
                 sol = item.data(SOLUTION)
                 item.setData(IS_ACTIVE_MARKER, sol in self.attempt.solution.substeps())
                 item.setData(IS_CROSSED_OUT_MARKER, sol.is_crossed_out)
+                item.setSelected(sol == self.attempt.solution)
 
     def refresh_saved_solutions(self):
         solutions = self.attempt.solutions_by_kind()
@@ -718,7 +719,9 @@ class Commands:
     @vfmc_command("step")
     def fr(self, axis=None):
         """Look for FR"""
-        variant = next(s.variant for s in self.attempt.solution.substeps() if s.kind == "dr")
+        variant = axis
+        if variant is None:
+            variant = next(s.variant for s in self.attempt.solution.substeps() if s.kind == "dr")
         if variant is not None:
             self.window.set_step("fr", variant)
         else:
@@ -753,7 +756,7 @@ class Commands:
 
     def done(self):
         sol = self.attempt.solution
-        if not sol.alg.len():
+        if not sol.alg.len() and sol.previous:
             sol = sol.previous
         sol.is_crossed_out = not sol.is_crossed_out
         self.attempt.save_solutions([])

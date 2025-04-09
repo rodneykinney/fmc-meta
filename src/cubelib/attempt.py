@@ -109,6 +109,11 @@ class Attempt:
 
     def advance_to(self, kind: str, variant: str):
         previous = self.solution if not self.solution.alg.is_empty() else self.solution.previous
+        if previous:
+            if not previous.alg.inverse_moves():
+                self.inverse = False
+            else:
+                self.inverse = len(previous.alg.normal_moves()) == 0
         self.set_solution(PartialSolution(kind, variant, previous=previous))
 
     def solutions_by_kind(self) -> Dict[str, List[PartialSolution]]:

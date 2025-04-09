@@ -111,7 +111,7 @@ impl Solvable for SliceRL {
     }
 
     fn should_draw_corner(&self, _cube: &Cube333, _pos: usize, _facelet: u8) -> bool {
-        false
+        true
     }
     fn solve(&self, cube: &Cube333, count: usize) -> PyResult<Vec<Algorithm>> {
         solve_step(cube, step_config(StepKind::FINLS, ""), count, false)
