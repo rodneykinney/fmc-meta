@@ -193,17 +193,7 @@ class AppWindow(QMainWindow):
 
         current_container = QWidget()
         current_layout = QVBoxLayout(current_container)
-        class CustomListWidget(QListWidget):
-            # Override key event to copy all selected lines to the clilpboard
-            def keyPressEvent(self, event):
-                    if event.matches(QKeySequence.Copy):
-                        selected_items = self.selectedItems()
-                        if selected_items:
-                            clipboard_text = "\n".join(item.text() for item in selected_items)
-                            QApplication.clipboard().setText(clipboard_text)
-                    else:
-                        super().keyPressEvent(event)  # Default behavior for other keys
-        self.current_solution = CustomListWidget()
+        self.current_solution = CurrentSolutionWidget()
         self.current_solution.setSelectionMode(QListWidget.ContiguousSelection)
         self.current_solution.setStyleSheet("font-size: 16px;")
         current_layout.addWidget(self.current_solution)
@@ -294,7 +284,7 @@ class AppWindow(QMainWindow):
             list.itemSelectionChanged.connect(lambda: self.item_selected(kind, list))
             list.setStyleSheet(list_style)
             list.installEventFilter(self)  # Allow key handling
-            list.setItemDelegate(CustomDelegate())
+            list.setItemDelegate(SolutionItemRenderer())
             list.setProperty("kind", kind)
             layout.addWidget(list)
             self.solution_widgets[kind] = list
@@ -387,9 +377,9 @@ class AppWindow(QMainWindow):
     def set_status(self, status: str):
         self.status_label.setText(status)
 
-    def _append_moves(self, moves):
+    def _append_moves(self, moves_str):
         """Append moves to the current solution"""
-        moves = moves.split(" ")
+        moves = moves_str.split(" ")
         inverse = self.attempt.inverse
 
         sol = self.attempt.solution
@@ -401,7 +391,7 @@ class AppWindow(QMainWindow):
         else:
             if not self.attempt.append_moves(moves, inverse):
                 assert sol.previous is not None
-                if all(sol.previous.allows_move(m) for m in moves):
+                if sol.previous.allows_moves(moves_str):
                     alg = sol.previous.alg
                     self.attempt.back()
                     self.attempt.append_moves(alg.normal_moves(), False)
@@ -409,7 +399,7 @@ class AppWindow(QMainWindow):
                     self.attempt.append_moves(moves, inverse)
                 else:
                     self.set_status(
-                        f"{moves} not allowed after {sol.previous.kind}{sol.previous.variant}")
+                        f"{moves_str} not allowed after {sol.previous.kind}{sol.previous.variant}")
 
     def set_step(self, kind, variant) -> bool:
         """Change to a specific solving step"""
@@ -519,7 +509,9 @@ class AppWindow(QMainWindow):
                     if obj.currentItem():
                         self.activate_item(kind, obj.currentItem(), obj)
                         return True
-            elif (key == Qt.Key_Tab):
+            elif (key == Qt.Key_Tab or key == Qt.Key_Backtab):
+                # Handle Tab and Shift+Tab to move between solution lists
+                order = ["eo", "dr", "htr", "fr", "slice", "finish"]
                 if obj not in self.solution_widgets.values() and obj != self.command_input:
                     return False
                 def select_widget(widget):
@@ -538,12 +530,15 @@ class AppWindow(QMainWindow):
                         self.command_input.setFocus()
                         return True
                 if obj == self.command_input:
+                    for k in reversed(order):
+                        w = self.solution_widgets[k]
+                        for i in range(0,w.count()):
+                            if w.item(i).data(IS_ACTIVE_MARKER):
+                                return select_widget(w)
                     return select_widget(self.solution_widgets["eo"])
-                # Handle Tab and Shift+Tab to move between solution lists
-                order = ["eo", "dr", "htr", "fr", "slice", "finish"]
                 index = order.index(obj.property("kind"))
                 next_index = index
-                if event.modifiers() & Qt.ShiftModifier:
+                if key == Qt.Key_Backtab:
                     next_index = (index - 1) % len(order)
                 else:
                     next_index = (index + 1) % len(order)
@@ -832,19 +827,19 @@ class Commands:
 
     @vfmc_command("session")
     def load_session(self, filename):
+        h = self.history
         try:
-            h = self.history
             self.history = []
             with open(filename, "r") as f:
                 for cmd in f.readlines():
                     self.execute(cmd.strip())
-            self.window.set_status(f"Loaded session from {filename}")
+            self.window.set_status(f"Loaded '{filename}'")
         except Exception as e:
             self.history = h
-            self.window.set_status(f"Unable to load session from {filename}: {e}")
+            self.window.set_status(f"Unable to load '{filename}': {e}")
 
 
-class CustomDelegate(QStyledItemDelegate):
+class SolutionItemRenderer(QStyledItemDelegate):
     def initStyleOption(self, option, index):
         # Override style for the active solution
         super().initStyleOption(option, index)
@@ -854,10 +849,16 @@ class CustomDelegate(QStyledItemDelegate):
         if index.data(IS_CROSSED_OUT_MARKER):
             option.font.setStrikeOut(True)
 
-
-class EventFilter():
-    def __init__(self, app: AppWindow):
-        self.app = app
+class CurrentSolutionWidget(QListWidget):
+    # Override key event to copy all selected lines to the clipboard
+    def keyPressEvent(self, event):
+        if event.matches(QKeySequence.Copy):
+            selected_items = self.selectedItems()
+            if selected_items:
+                clipboard_text = "\n".join(item.text() for item in selected_items)
+                QApplication.clipboard().setText(clipboard_text)
+        else:
+            super().keyPressEvent(event)  # Default behavior for other keys
 
 
 if __name__ == "__main__":

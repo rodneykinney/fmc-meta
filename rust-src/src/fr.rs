@@ -1,30 +1,19 @@
 use crate::solver::{solve_step, step_config};
 use crate::{
-    Algorithm, Solvable, Cube,
-    CORNER_FB_FACELETS, CORNER_OPPOSITE_E_SLICE, CORNER_OPPOSITE_M_SLICE,
+    Algorithm, Solvable, CORNER_FB_FACELETS, CORNER_OPPOSITE_E_SLICE, CORNER_OPPOSITE_M_SLICE,
     CORNER_OPPOSITE_S_SLICE, CORNER_RL_FACELETS, CORNER_UD_FACELETS, EDGE_FB_FACELETS,
     EDGE_OPPOSITE_E_SLICE, EDGE_OPPOSITE_M_SLICE, EDGE_OPPOSITE_S_SLICE, EDGE_RL_FACELETS,
     EDGE_UD_FACELETS, HTRFB, HTRRL, HTRUD,
 };
 use cubelib::cube::turn::TransformableMut;
-use cubelib::cube::{Cube333, CubeFace, Direction, Transformation333, Turn333};
+use cubelib::cube::{Cube333, Transformation333};
 use cubelib::defs::StepKind;
 use cubelib::steps::coord::Coord;
 use cubelib::steps::fr::coords::{FRCPOrbitCoord, FROrbitParityCoord, FRUDNoSliceCoord};
-use pyo3::exceptions::PyValueError;
 use pyo3::PyResult;
-use std::str::FromStr;
 
 pub struct FRUD;
 impl Solvable for FRUD {
-    fn is_move_allowed(&self, s: &str) -> PyResult<bool> {
-        let turn = Turn333::from_str(s).map_err(|_| PyValueError::new_err("Invalid move"))?;
-        match turn.face {
-            CubeFace::Up | CubeFace::Down => Ok(false),
-            _ => Ok(turn.dir == Direction::Half),
-        }
-    }
-
     fn is_solved(&self, cube: &Cube333) -> bool {
         FRUDNoSliceCoord::from(cube).val() == 0
     }
@@ -79,19 +68,11 @@ impl Solvable for FRUD {
         }
     }
     fn solve(&self, cube: &Cube333, count: usize) -> PyResult<Vec<Algorithm>> {
-        solve_step(cube, step_config(StepKind::FRLS, ""), count, false)
+        solve_step(cube, step_config(StepKind::FRLS, "ud"), count, false)
     }
 }
 pub struct FRFB;
 impl Solvable for FRFB {
-    fn is_move_allowed(&self, s: &str) -> PyResult<bool> {
-        let turn = Turn333::from_str(s).map_err(|_| PyValueError::new_err("Invalid move"))?;
-        match turn.face {
-            CubeFace::Front | CubeFace::Back => Ok(false),
-            _ => Ok(turn.dir == Direction::Half),
-        }
-    }
-
     fn is_solved(&self, cube: &Cube333) -> bool {
         let mut cube = cube.clone();
         cube.transform(Transformation333::X);
@@ -150,20 +131,14 @@ impl Solvable for FRFB {
         }
     }
     fn solve(&self, cube: &Cube333, count: usize) -> PyResult<Vec<Algorithm>> {
-        solve_step(cube, step_config(StepKind::FRLS, ""), count, false)
+        let mut cube = cube.clone();
+        cube.transform(Transformation333::X);
+        FRUD.solve(&cube, count)
     }
 }
 
 pub struct FRRL;
 impl Solvable for FRRL {
-    fn is_move_allowed(&self, s: &str) -> PyResult<bool> {
-        let turn = Turn333::from_str(s).map_err(|_| PyValueError::new_err("Invalid move"))?;
-        match turn.face {
-            CubeFace::Right | CubeFace::Left => Ok(false),
-            _ => Ok(turn.dir == Direction::Half),
-        }
-    }
-
     fn is_solved(&self, cube: &Cube333) -> bool {
         let mut cube = cube.clone();
         cube.transform(Transformation333::Z);
@@ -222,16 +197,18 @@ impl Solvable for FRRL {
         }
     }
     fn solve(&self, cube: &Cube333, count: usize) -> PyResult<Vec<Algorithm>> {
-        solve_step(cube, step_config(StepKind::FRLS, ""), count, false)
+        let mut cube = cube.clone();
+        cube.transform(Transformation333::Z);
+        FRUD.solve(&cube, count)
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::Cube;
     use cubelib::algs::Algorithm as LibAlgorithm;
     use cubelib::cube::turn::ApplyAlgorithm;
-    use cubelib::steps::htr::coords::HTRDRUDCoord;
 
     #[test]
     fn test_8e() {
@@ -243,7 +220,7 @@ mod tests {
 
     #[test]
     fn test_solve() {
-        let cube = Cube::new("U' B2 U' L2 D L2 U' L2 R U' F' L' F2 L2 B2 F2 D2 L2 B' L2 F' D2 L2 F2 U' F2 U' B' D F' U F U2 D L' B U' B2 L2 R D' F2 U2 R".to_string()).unwrap().0;
+        let cube = Cube::new("R' F' D2 F R F2 L' U2 B F2 D2 B2 D2 R2 F2 B2 U2 U F R2 U2 U D' R2 F R U2 D L2 R' U2 D' R U' F2 R2 U2 F2 D".to_string()).unwrap().0;
         let solutions = FRUD.solve(&cube, 10).unwrap();
         assert_ne!(solutions.len(), 0);
     }

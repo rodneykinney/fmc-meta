@@ -2,25 +2,15 @@ use crate::eo::{EOFB, EORL, EOUD};
 use crate::solver::{solve_step, step_config};
 use crate::{Algorithm, DrawableCorner, Solvable};
 use cubelib::cube::turn::TransformableMut;
-use cubelib::cube::{Corner, Cube333, CubeFace, Direction, Transformation333, Turn333};
+use cubelib::cube::{Corner, Cube333, Transformation333};
+use cubelib::defs::StepKind;
 use cubelib::steps::coord::Coord;
 use cubelib::steps::dr::coords::DRUDEOFBCoord;
 use cubelib::steps::eo::coords::BadEdgeCount;
-use pyo3::exceptions::PyValueError;
 use pyo3::PyResult;
-use std::str::FromStr;
-use cubelib::defs::StepKind;
 
 pub struct DRUD;
 impl Solvable for DRUD {
-    fn is_move_allowed(&self, s: &str) -> PyResult<bool> {
-        let turn = Turn333::from_str(s).map_err(|_| PyValueError::new_err("Invalid move"))?;
-        match turn.face {
-            CubeFace::Up | CubeFace::Down => Ok(true),
-            _ => Ok(turn.dir == Direction::Half),
-        }
-    }
-
     fn is_solved(&self, cube: &Cube333) -> bool {
         let solved = cube.count_bad_edges_fb() == 0
             && cube.count_bad_edges_lr() == 0
@@ -56,14 +46,6 @@ impl Solvable for DRUD {
 
 pub struct DRFB;
 impl Solvable for DRFB {
-    fn is_move_allowed(&self, s: &str) -> PyResult<bool> {
-        let turn = Turn333::from_str(s).map_err(|_| PyValueError::new_err("Invalid move"))?;
-        match turn.face {
-            CubeFace::Front | CubeFace::Back => Ok(true),
-            _ => Ok(turn.dir == Direction::Half),
-        }
-    }
-
     fn is_solved(&self, cube: &Cube333) -> bool {
         let mut cube = cube.clone();
         cube.transform(Transformation333::X);
@@ -91,13 +73,6 @@ impl Solvable for DRFB {
 }
 pub struct DRRL;
 impl Solvable for DRRL {
-    fn is_move_allowed(&self, s: &str) -> PyResult<bool> {
-        let turn = Turn333::from_str(s).map_err(|_| PyValueError::new_err("Invalid move"))?;
-        match turn.face {
-            CubeFace::Right | CubeFace::Left => Ok(true),
-            _ => Ok(turn.dir == Direction::Half),
-        }
-    }
     fn is_solved(&self, cube: &Cube333) -> bool {
         let mut cube = cube.clone();
         cube.transform(Transformation333::Z);

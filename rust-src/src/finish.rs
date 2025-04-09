@@ -9,10 +9,6 @@ use pyo3::PyResult;
 
 pub struct Finish;
 impl Solvable for Finish {
-    fn is_move_allowed(&self, _s: &str) -> PyResult<bool> {
-        Ok(false)
-    }
-
     fn is_solved(&self, cube: &Cube333) -> bool {
         HTRFinishCoord::from(cube).val() == 0
     }
@@ -22,33 +18,27 @@ impl Solvable for Finish {
     }
 
     fn case_name(&self, cube: &Cube333) -> String {
-        let mut bad_edge_count = 0;
-        let mut bad_corner_count = 0;
         let edges = cube.edges.get_edges();
         let corners = cube.corners.get_corners();
-        for i in 0..12 {
-            if edges[i].id as usize != i{
-                bad_edge_count += 1;
-            }
-        }
-        for i in 0..8 {
-            if corners[i].id as usize != i {
-                bad_corner_count += 1;
-            }
-        }
-        format!("{}c{}e", bad_corner_count, bad_edge_count).to_string()
+        let bad_edge_count =
+            edges.iter().enumerate().filter(
+                    |(i, e)| (**e).id as usize != *i
+            ).count();
+        let bad_corner_count =
+            corners.iter().enumerate().filter(
+                |(i, c)| (**c).id as usize != *i
+            ).count();
+        let e_string = if bad_edge_count > 0 {format!("{}e", bad_edge_count) } else {"".to_string()};
+        let c_string = if bad_corner_count > 0 {format!("{}c", bad_edge_count) } else {"".to_string()};
+        format!("{}{}", c_string, e_string)
     }
 
     fn should_draw_edge(&self, _cube: &Cube333, _pos: usize, _facelet: u8) -> bool {
         true
-        // let e = cube.edges.get_edges()[pos];
-        // e.id != pos as u8
     }
 
     fn should_draw_corner(&self, _cube: &Cube333, _pos: usize, _facelet: u8) -> bool {
         true
-        // let c = cube.corners.get_corners()[pos];
-        // c.id != pos as u8
     }
     fn solve(&self, cube: &Cube333, count: usize) -> PyResult<Vec<Algorithm>> {
         solve_step(cube, step_config(StepKind::FIN, ""), count, false)

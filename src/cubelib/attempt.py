@@ -35,10 +35,10 @@ class PartialSolution:
     def _add_move(self, move: str, inverse: bool):
         self.alg = self.alg.append(move, inverse)
 
-    def allows_move(self, move: str) -> bool:
+    def allows_moves(self, moves: str) -> bool:
         if self.previous is None:
             return True
-        return self.previous.step_info.is_move_allowed(move)
+        return self.previous.step_info.are_moves_allowed(moves)
 
     def full_alg(self):
         if self.previous is not None:
@@ -81,7 +81,7 @@ class Attempt:
         self.update_cube()
 
     def append_moves(self, moves: List[str], inverse: bool) -> bool:
-        if not all(self.solution.allows_move(m) for m in moves):
+        if not self.solution.allows_moves(" ".join(moves)):
             return False
 
         for m in moves:

@@ -1,5 +1,3 @@
-use crate::fr::{FRFB, FRRL, FRUD};
-use crate::Cube;
 use crate::htr::{HTRFB, HTRUD, HTRRL};
 use crate::solver::{solve_step, step_config};
 use crate::{Algorithm, Solvable};
@@ -12,10 +10,6 @@ use pyo3::PyResult;
 
 pub struct SliceUD;
 impl Solvable for SliceUD {
-    fn is_move_allowed(&self, _s: &str) -> PyResult<bool> {
-        Ok(false)
-    }
-
     fn is_solved(&self, cube: &Cube333) -> bool {
         HTRLeaveSliceFinishCoord::from(cube).val() == 0
     }
@@ -60,10 +54,6 @@ impl Solvable for SliceUD {
 }
 pub struct SliceFB;
 impl Solvable for SliceFB {
-    fn is_move_allowed(&self, _s: &str) -> PyResult<bool> {
-        Ok(false)
-    }
-
     fn is_solved(&self, cube: &Cube333) -> bool {
         let mut cube = cube.clone();
         cube.transform(Transformation333::X);
@@ -97,10 +87,6 @@ impl Solvable for SliceFB {
 
 pub struct SliceRL;
 impl Solvable for SliceRL {
-    fn is_move_allowed(&self, _s: &str) -> PyResult<bool> {
-        Ok(false)
-    }
-
     fn is_solved(&self, cube: &Cube333) -> bool {
         let mut cube = cube.clone();
         cube.transform(Transformation333::Z);
@@ -134,7 +120,8 @@ impl Solvable for SliceRL {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use crate::Cube;
+use super::*;
     use cubelib::cube::turn::TurnableMut;
     use cubelib::cube::Cube333;
     use cubelib::cube::CubeFace;

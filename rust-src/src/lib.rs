@@ -1,26 +1,26 @@
 mod dr;
 mod eo;
+mod finish;
 mod fr;
 mod htr;
-mod solver;
 mod slice;
-mod finish;
+mod solver;
 
 use pyo3::prelude::*;
 use std::str::FromStr;
 
 use pyo3::exceptions::PyValueError;
 
-use cubelib::algs::Algorithm as LibAlgorithm;
-use cubelib::cube::turn::{ApplyAlgorithm, Direction, Invertible, InvertibleMut};
-use cubelib::cube::{Corner, Cube333, Turn333};
 use crate::dr::{DRFB, DRRL, DRUD};
 use crate::eo::{EOFB, EORL, EOUD};
 use crate::finish::Finish;
 use crate::fr::{FRFB, FRRL, FRUD};
-use crate::slice::{SliceUD, SliceFB, SliceRL};
 use crate::htr::{HTRFB, HTRRL, HTRUD};
+use crate::slice::{SliceFB, SliceRL, SliceUD};
 use crate::solver::scramble;
+use cubelib::algs::Algorithm as LibAlgorithm;
+use cubelib::cube::turn::{ApplyAlgorithm, Direction, Invertible, InvertibleMut};
+use cubelib::cube::{Corner, Cube333, Turn333};
 
 #[pyclass]
 struct Algorithm(LibAlgorithm);
@@ -29,17 +29,25 @@ struct Algorithm(LibAlgorithm);
 impl Algorithm {
     #[new]
     fn new(s: &str) -> PyResult<Self> {
-        let alg =
-            LibAlgorithm::from_str(s).map_err(|_| PyValueError::new_err(format!("Invalid algorithm: {}", s)))?;
+        let alg = LibAlgorithm::from_str(s)
+            .map_err(|_| PyValueError::new_err(format!("Invalid algorithm: {}", s)))?;
         Ok(Algorithm(alg))
     }
 
     fn normal_moves(&self) -> Vec<String> {
-        self.0.normal_moves.iter().map(|t| format!("{}", t)).collect()
+        self.0
+            .normal_moves
+            .iter()
+            .map(|t| format!("{}", t))
+            .collect()
     }
 
     fn inverse_moves(&self) -> Vec<String> {
-        self.0.inverse_moves.iter().map(|t| format!("{}", t)).collect()
+        self.0
+            .inverse_moves
+            .iter()
+            .map(|t| format!("{}", t))
+            .collect()
     }
 
     fn is_empty(&self) -> bool {
@@ -51,7 +59,8 @@ impl Algorithm {
     }
 
     fn append(&self, s: &str, inverse: bool) -> PyResult<Algorithm> {
-        let turn = Turn333::from_str(s).map_err(|_| PyValueError::new_err(format!("Invalid move: {}", s)))?;
+        let turn = Turn333::from_str(s)
+            .map_err(|_| PyValueError::new_err(format!("Invalid move: {}", s)))?;
         let alg = append_move(&self.0, turn, inverse);
         Ok(Algorithm(alg))
     }
@@ -290,32 +299,54 @@ impl StepInfo {
 
 #[pymethods]
 impl StepInfo {
-    fn is_move_allowed(&self, s: &str) -> PyResult<bool> {
-        self.step().map_err(|e|PyValueError::new_err(e.to_string()))?.is_move_allowed(s)
+
+    fn are_moves_allowed(&self, moves: &str) -> PyResult<bool> {
+        let alg = Algorithm::new(moves)
+            .map_err(|_| PyValueError::new_err(format!("Invalid moves '{}'", moves)))?;
+        let mut cube = Cube333::default();
+        cube.apply_alg(&alg.0);
+        self.is_solved(&Cube(cube))
     }
 
     fn is_solved(&self, cube: &Cube) -> PyResult<bool> {
-        Ok(self.step().map_err(|e|PyValueError::new_err(e.to_string()))?.is_solved(&cube.0))
+        Ok(self
+            .step()
+            .map_err(|e| PyValueError::new_err(e.to_string()))?
+            .is_solved(&cube.0))
     }
 
     fn is_eligible(&self, cube: &Cube) -> PyResult<bool> {
-        Ok(self.step().map_err(|e|PyValueError::new_err(e.to_string()))?.is_eligible(&cube.0))
+        Ok(self
+            .step()
+            .map_err(|e| PyValueError::new_err(e.to_string()))?
+            .is_eligible(&cube.0))
     }
 
     fn case_name(&self, cube: &Cube) -> PyResult<String> {
-        Ok(self.step().map_err(|e|PyValueError::new_err(e.to_string()))?.case_name(&cube.0))
+        Ok(self
+            .step()
+            .map_err(|e| PyValueError::new_err(e.to_string()))?
+            .case_name(&cube.0))
     }
 
     fn should_draw_edge(&self, cube: &Cube, pos: usize, facelet: u8) -> PyResult<bool> {
-        Ok(self.step().map_err(|e|PyValueError::new_err(e.to_string()))?.should_draw_edge(&cube.0, pos, facelet))
+        Ok(self
+            .step()
+            .map_err(|e| PyValueError::new_err(e.to_string()))?
+            .should_draw_edge(&cube.0, pos, facelet))
     }
 
     fn should_draw_corner(&self, cube: &Cube, pos: usize, facelet: u8) -> PyResult<bool> {
-        Ok(self.step().map_err(|e|PyValueError::new_err(e.to_string()))?.should_draw_corner(&cube.0, pos, facelet))
+        Ok(self
+            .step()
+            .map_err(|e| PyValueError::new_err(e.to_string()))?
+            .should_draw_corner(&cube.0, pos, facelet))
     }
 
     fn solve(&self, cube: &Cube, count: usize) -> PyResult<Vec<Algorithm>> {
-        self.step().map_err(|e|PyValueError::new_err(e.to_string()))?.solve(&cube.0, count)
+        self.step()
+            .map_err(|e| PyValueError::new_err(e.to_string()))?
+            .solve(&cube.0, count)
     }
 
     #[new]
@@ -328,7 +359,6 @@ impl StepInfo {
 }
 
 trait Solvable {
-    fn is_move_allowed(&self, s: &str) -> PyResult<bool>;
     fn is_solved(&self, cube: &Cube333) -> bool;
     fn is_eligible(&self, cube: &Cube333) -> bool;
     fn case_name(&self, cube: &Cube333) -> String;
@@ -379,10 +409,6 @@ impl StepBuilder {
 
 pub struct SCRAMBLED;
 impl Solvable for SCRAMBLED {
-    fn is_move_allowed(&self, _s: &str) -> PyResult<bool> {
-        Ok(true)
-    }
-
     fn is_solved(&self, _cube: &Cube333) -> bool {
         true
     }

@@ -4,20 +4,14 @@ use crate::{
     CORNER_UD_FACELETS, EDGE_FB_FACELETS, EDGE_RL_FACELETS, EDGE_UD_FACELETS,
 };
 use cubelib::cube::turn::{ApplyAlgorithm, TransformableMut};
-use cubelib::cube::{Cube333, Direction, Transformation333, Turn333};
+use cubelib::cube::{Cube333, Transformation333};
 use cubelib::defs::StepKind;
 use cubelib::steps::coord::Coord;
 use cubelib::steps::fr::coords::FRUDNoSliceCoord;
-use pyo3::exceptions::PyValueError;
 use pyo3::PyResult;
-use std::str::FromStr;
 
 pub struct HTRUD;
 impl Solvable for HTRUD {
-    fn is_move_allowed(&self, s: &str) -> PyResult<bool> {
-        let turn = Turn333::from_str(s).map_err(|_| PyValueError::new_err("Invalid move"))?;
-        Ok(turn.dir == Direction::Half)
-    }
     fn is_solved(&self, cube: &Cube333) -> bool {
         match cube.get_dr_subset() {
             Some(s) => s.qt == 0,
@@ -68,9 +62,6 @@ fn is_equivalent(transform: Transformation333) -> impl Fn(&Cube333, &Algorithm) 
 }
 pub struct HTRFB;
 impl Solvable for HTRFB {
-    fn is_move_allowed(&self, s: &str) -> PyResult<bool> {
-        HTRUD.is_move_allowed(s)
-    }
     fn is_solved(&self, cube: &Cube333) -> bool {
         match cube.get_dr_subset() {
             Some(s) => s.qt == 0,
@@ -110,9 +101,6 @@ impl Solvable for HTRFB {
 }
 pub struct HTRRL;
 impl Solvable for HTRRL {
-    fn is_move_allowed(&self, s: &str) -> PyResult<bool> {
-        HTRUD.is_move_allowed(s)
-    }
     fn is_solved(&self, cube: &Cube333) -> bool {
         HTRUD.is_solved(cube)
     }
@@ -180,5 +168,11 @@ mod tests {
         let subset = cube.get_dr_subset().unwrap();
         let case = HTRRL.case_name(&cube);
         assert_eq!(HTRRL.is_solved(&cube), false);
+    }
+
+    #[test]
+    fn test_allowed() {
+        let moves = "R L' U2 R' L U2";
+        assert_eq!(StepInfo(HTRUD).are_moves_allowed(moves).unwrap(), true);
     }
 }
