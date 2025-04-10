@@ -1,3 +1,4 @@
+import dataclasses
 import os
 import sys
 import math
@@ -291,10 +292,11 @@ class AppWindow(QMainWindow):
             layout.addWidget(QLabel(f"{label}:"))
             list = QListWidget()
             list.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-            list.itemDoubleClicked.connect(lambda item: self.activate_item(kind, item, list))
-            list.itemSelectionChanged.connect(lambda: self.item_selected(kind, list))
+            list.itemDoubleClicked.connect(self.activate_item)
+            list.itemClicked.connect(lambda item: self.item_selected(list))
+            list.itemSelectionChanged.connect(lambda: self.item_selected(list))
+            list.installEventFilter(self)
             list.setStyleSheet(list_style)
-            list.installEventFilter(self)  # Allow key handling
             list.setItemDelegate(SolutionItemRenderer())
             list.setProperty("kind", kind)
             layout.addWidget(list)
@@ -457,13 +459,13 @@ class AppWindow(QMainWindow):
                 self.set_status(f"Cube is not eligible for {kind}{variant}")
                 return False
 
-    def activate_item(self, kind, item, list_widget):
+    def activate_item(self, item):
         sol = item.data(SOLUTION)
         index = self.attempt.solutions_by_kind()[sol.kind].index(sol) + 1
         # Execute via self.commands to get this into the history
-        self.commands.execute(f'check("{kind}",{index})')
+        self.commands.execute(f'check("{sol.kind}",{index})')
 
-    def item_selected(self, kind, list_widget):
+    def item_selected(self, list_widget):
         selected_item = list_widget.currentItem()
         if not selected_item:
             return
@@ -534,7 +536,7 @@ class AppWindow(QMainWindow):
                         return False
                     # Enter key to check the currently selected solution
                     if obj.currentItem():
-                        self.activate_item(kind, obj.currentItem(), obj)
+                        self.activate_item(obj.currentItem())
                         return True
             elif (key == Qt.Key_Tab or key == Qt.Key_Backtab):
                 # Handle Tab and Shift+Tab to move between solution lists
@@ -651,6 +653,7 @@ class Commands:
 
         try:
             self.window.set_status("")
+            result = None
             # Check if it's a sequence of cube moves
             if all(m in MOVES for m in cmd.upper().split()):
                 self.window._append_moves(cmd.upper())
@@ -661,11 +664,13 @@ class Commands:
                 if cmd.find("(") < 0:
                     cmd = f"{cmd}()"
                 # Use locals and globals from this context
-                exec(f"self.{cmd}", globals(), {'self': self})
-            command_to_save = raw_command
-            if command_to_save == "scramble":
-                command_to_save = f"""scramble("{self.attempt.scramble}")"""
-            self.history.append(command_to_save)
+                local_vars = {"self": self}
+                exec(f"result = self.{cmd}", globals(), local_vars)
+                result = local_vars.get("result")
+            if result is None:
+                result = CommandResult(add_to_history = raw_command)
+            if result.error is None and result.add_to_history is not None:
+                self.history.append(result.add_to_history)
         except Exception as e:
             logging.error(traceback.format_exc())
             logging.error(sys.exc_info())
@@ -698,37 +703,30 @@ class Commands:
     def z2(self):
         self.attempt.solution.orientation.z(2)
 
-    @vfmc_command("step")
     def eoud(self):
         """Look for EO on UD axis"""
         self.window.set_step("eo", "ud")
 
-    @vfmc_command("step")
     def eofb(self):
         """Look for EO on FB axis"""
         self.window.set_step("eo", "fb")
 
-    @vfmc_command("step")
     def eorl(self):
         """Look for EO on RL axis"""
         self.window.set_step("eo", "rl")
 
-    @vfmc_command("step")
     def drud(self):
         """Look for DR on UD axis"""
         self.window.set_step("dr", "ud")
 
-    @vfmc_command("step")
     def drfb(self):
         """Look for DR on FB axis"""
         self.window.set_step("dr", "fb")
 
-    @vfmc_command("step")
     def drrl(self):
         """Look for DR on RL axis"""
         self.window.set_step("dr", "rl")
 
-    @vfmc_command("step")
     def htr(self):
         """Look for HTR"""
         sol = self.attempt.solution
@@ -742,7 +740,6 @@ class Commands:
         else:
             self.window.set_status("Cube is not eligible for HTR")
 
-    @vfmc_command("step")
     def fr(self, axis=None):
         """Look for FR"""
         variant = axis
@@ -763,12 +760,10 @@ class Commands:
     def finish(self, axis=None):
         self.window.set_step("finish", "")
 
-    @vfmc_command("niss")
     def niss(self):
         """Switch between normal and inverse scramble"""
         self.attempt.niss()
 
-    @vfmc_command("solve")
     def solve(self, num_solutions: int = 1):
         """Find and save solutions for the current step"""
         self.window.solve(num_solutions)
@@ -799,7 +794,6 @@ class Commands:
                 item.setData(IS_DONE_MARKER, sol.is_done)
         widget.update()
 
-    @vfmc_command("nav")
     def save(self):
         """Save this algorithm and start a new one"""
         sol = self.attempt.solution
@@ -826,12 +820,10 @@ class Commands:
         else:
             self.reset()
 
-    @vfmc_command("nav")
     def reset(self):
         """Reset the cube to the beginning of the current step"""
         self.attempt.reset()
 
-    @vfmc_command("nav")
     def back(self):
         """Go back to the previous step"""
         self.attempt.back()
@@ -847,7 +839,6 @@ class Commands:
             return
         self.window.check_solution(solutions[index - 1])
 
-    @vfmc_command("scramble")
     def scramble(self, scramble: str = None):
         """
         <br>Use scramble(\"...\") to initialize with the specified scramble
@@ -856,17 +847,19 @@ class Commands:
         if scramble is None:
             scramble = gen_scramble()
         self.window.set_scramble(scramble)
+        return CommandResult(add_to_history = f'scramble("{scramble}")')
 
-    @vfmc_command("session")
     def save_session(self, filename):
         try:
             with open(filename, "w") as f:
                 f.writelines("\n".join(self.history))
             self.window.set_status(f"Saved session to {filename}")
+            return CommandResult(add_to_history=None)
         except Exception as e:
             self.window.set_status(f"Unable to save to {filename}: {e}")
+            return CommandResult(error = e, add_to_history=None)
 
-    @vfmc_command("session")
+
     def load_session(self, filename):
         h = self.history
         try:
@@ -875,9 +868,11 @@ class Commands:
                 for cmd in f.readlines():
                     self.execute(cmd.strip())
             self.window.set_status(f"Loaded '{filename}'")
+            return CommandResult(add_to_history=None)
         except Exception as e:
             self.history = h
             self.window.set_status(f"Unable to load '{filename}': {e}")
+            return CommandResult(error=e, add_to_history=None)
 
 
 class SolutionItemRenderer(QStyledItemDelegate):
@@ -901,6 +896,10 @@ class CurrentSolutionWidget(QListWidget):
         else:
             super().keyPressEvent(event)  # Default behavior for other keys
 
+@dataclasses.dataclass
+class CommandResult:
+    error: Optional[Exception] = None
+    add_to_history: Optional[str] = None
 
 if __name__ == "__main__":
     main()
