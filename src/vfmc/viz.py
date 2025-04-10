@@ -7,7 +7,7 @@ from OpenGL.GLU import *
 import math
 import numpy as np
 
-from cubelib.attempt import PartialSolution, Attempt, Orientation, AXIS_ROTATIONS
+from vfmc.attempt import PartialSolution, Attempt, Orientation, AXIS_ROTATIONS
 from py_cubelib import (Cube, StepInfo)
 from pyquaternion import Quaternion
 

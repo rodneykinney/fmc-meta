@@ -15,9 +15,8 @@ from PyQt5.QtWidgets import (QApplication, QMainWindow, QVBoxLayout, QHBoxLayout
 from PyQt5.QtCore import Qt, QTimer, QEvent
 from PyQt5.QtGui import QSurfaceFormat, QColor, QKeySequence
 
-import cubelib.attempt
-from cubelib.attempt import PartialSolution, Attempt
-from cubelib.viz import facelet_x, facelet_y, facelet_z, axis, BACKGROUND, CubeViz
+from vfmc.attempt import PartialSolution, Attempt
+from vfmc.viz import facelet_x, facelet_y, facelet_z, axis, BACKGROUND, CubeViz
 from py_cubelib import Cube, Algorithm, StepInfo, scramble as gen_scramble
 
 # Basic set of cube moves
