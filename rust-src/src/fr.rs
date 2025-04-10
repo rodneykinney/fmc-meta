@@ -131,9 +131,7 @@ impl Solvable for FRFB {
         }
     }
     fn solve(&self, cube: &Cube333, count: usize) -> PyResult<Vec<Algorithm>> {
-        let mut cube = cube.clone();
-        cube.transform(Transformation333::X);
-        FRUD.solve(&cube, count)
+        solve_step(cube, step_config(StepKind::FRLS, "fb"), count, false)
     }
 }
 
@@ -153,28 +151,6 @@ impl Solvable for FRRL {
         let mut ud_cube = cube.clone();
         ud_cube.transform(Transformation333::Z);
         FRUD.case_name(&ud_cube)
-        // let parity = FROrbitParityCoord::from(&ud_cube).val() == 1;
-        // let corner_case = match (FRCPOrbitCoord::from(&ud_cube.corners).val(), parity) {
-        //     (0, true) => "0c3",
-        //     (0, false) => "0c0",
-        //     (3, true) => "4c1",
-        //     (3, false) => "4c2",
-        //     (_, true) => "6c1",
-        //     (_, false) => "6c2",
-        // };
-        // let bad_edge_count = cube
-        //     .edges
-        //     .get_edges()
-        //     .iter()
-        //     .enumerate()
-        //     .filter(|(pos, e)|
-        //         *pos as u8 != EDGE_OPPOSITE_M_SLICE[*pos]
-        //             && e.id != *pos as u8
-        //             && e.id != EDGE_OPPOSITE_M_SLICE[*pos])
-        //     .count() as u8;
-        // let bad_edge_count = bad_edge_count.min(8 - bad_edge_count);
-        //
-        // format!("{} {}e", corner_case, bad_edge_count).to_string()
     }
 
     fn should_draw_edge(&self, cube: &Cube333, pos: usize, facelet: u8) -> bool {
@@ -197,9 +173,7 @@ impl Solvable for FRRL {
         }
     }
     fn solve(&self, cube: &Cube333, count: usize) -> PyResult<Vec<Algorithm>> {
-        let mut cube = cube.clone();
-        cube.transform(Transformation333::Z);
-        FRUD.solve(&cube, count)
+        solve_step(cube, step_config(StepKind::FRLS, "lr"), count, false)
     }
 }
 

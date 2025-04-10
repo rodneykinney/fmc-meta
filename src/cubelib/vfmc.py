@@ -172,17 +172,23 @@ class AppWindow(QMainWindow):
         status_layout.setContentsMargins(0, 0, 0, 0)
         status_layout.setSpacing(0)
 
+        label_style = "background-color: #4d4d4d; color: white; font-weight: bold; font-size: 18px; padding: 5px;"
         # Left label - Step kind and variant
         self.step_label = QLabel("Step")
-        self.step_label.setStyleSheet(
-            "background-color: #4d4d4d; color: white; font-weight: bold; font-size: 18px; padding: 5px;")
+        self.step_label.setStyleSheet(label_style)
         self.step_label.setMinimumHeight(40)
         status_layout.addWidget(self.step_label, 1)  # Give it a stretch factor of 1
 
+        # Inverse marker
+        self.niss_label = QLabel("NISS")
+        self.niss_label.setStyleSheet(label_style)
+        self.niss_label.setAlignment(Qt.AlignCenter)
+        self.niss_label.setMinimumHeight(40)
+        status_layout.addWidget(self.niss_label, 1)  # Give it a stretch factor of 1
+
         # Right label - Case name
         self.case_label = QLabel("Case")
-        self.case_label.setStyleSheet(
-            "background-color: #4d4d4d; color: white; font-weight: bold; font-size: 18px; padding: 5px;")
+        self.case_label.setStyleSheet(label_style)
         self.case_label.setAlignment(Qt.AlignRight)
         self.case_label.setMinimumHeight(40)
         status_layout.addWidget(self.case_label, 1)  # Give it a stretch factor of 1
@@ -342,6 +348,9 @@ class AppWindow(QMainWindow):
         sol = self.attempt.solution
         step_text = f"{sol.kind}{sol.variant}"
         self.step_label.setText(step_text)
+
+        # Update NISS label
+        self.niss_label.setText("(inverse)" if self.attempt.inverse else "")
 
         # Update case name
         if not sol.step_info.is_solved(self.attempt.cube):

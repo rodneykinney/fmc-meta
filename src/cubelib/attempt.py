@@ -74,6 +74,7 @@ class Attempt:
     def set_scramble(self, s):
         self._saved_by_kind.clear()
         self.scramble = s
+        self.inverse = False
         self.set_solution(PartialSolution("", "", previous=None))
         self.update_cube()
         self.notify_solution_listeners()
